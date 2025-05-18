@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Distribuido</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="user-setup">
+      <label for="username">Tu nombre:</label>
+      <input type="text" id="username" placeholder="Ingresa tu nombre" />
+      <button id="set-username">Guardar Nombre</button>
+    </div>
+
+    <button id="create-chat">Crear Nuevo Chat</button>
+
+    <div id="chat-list">
+      <h2>Chats Disponibles</h2>
+      <ul id="available-chats">
+        <li>No hay chats disponibles aún.</li>
+      </ul>
+    </div>
+
+    <div id="chat-area">
+      <h2>Chat</h2>
+      <div id="messages"></div>
+    </div>
+
+    <div id="message-input-area">
+      <input type="text" id="message-input" placeholder="Escribe tu mensaje" />
+      <button id="send-button">Enviar</button>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
