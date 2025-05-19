@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chat Distribuido</title>
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
   </head>
   <body>
     <div id="user-setup">
@@ -14,6 +15,20 @@
     </div>
 
     <button id="create-chat">Crear Nuevo Chat</button>
+
+    <div id="join-chat-section" style="margin-top: 20px">
+      <h2>Unirse a un Chat Existente (Prueba Manual)</h2>
+      <label for="offer-input">Pegar Oferta Aquí:</label><br />
+      <textarea id="offer-input" rows="5" cols="50"></textarea><br />
+      <button id="join-button">Unirse al Chat</button>
+    </div>
+
+    <div id="process-answer-section" style="margin-top: 20px">
+      <h2>Procesar Respuesta (Prueba Manual - Iniciador)</h2>
+      <label for="answer-input">Pegar Respuesta Aquí:</label><br />
+      <textarea id="answer-input" rows="5" cols="50"></textarea><br />
+      <button id="process-answer-button">Procesar Respuesta</button>
+    </div>
 
     <div id="chat-list">
       <h2>Chats Disponibles</h2>
