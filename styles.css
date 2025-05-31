@@ -1,31 +1,77 @@
+/* styles.css */
+
+/* Estilos básicos para el div de mensajes de estado */
+.status-message {
+  padding: 10px;
+  margin: 10px 0;
+  border-radius: 5px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.status-message.info {
+  background-color: #e0f7fa; /* Azul claro */
+  color: #00796b;
+  border: 1px solid #00bcd4;
+}
+
+.status-message.success {
+  background-color: #e8f5e9; /* Verde claro */
+  color: #2e7d32;
+  border: 1px solid #4caf50;
+}
+
+.status-message.warning {
+  background-color: #fffde7; /* Amarillo claro */
+  color: #fbc02d;
+  border: 1px solid #ffeb3b;
+}
+
+.status-message.error {
+  background-color: #ffebee; /* Rojo claro */
+  color: #c62828;
+  border: 1px solid #f44336;
+}
+
+/* Otros estilos existentes (manténlos) */
 body {
   font-family: sans-serif;
-  margin: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  background-color: #f4f4f4;
 }
 
-#user-setup {
+#user-setup,
+#chat-list,
+#chat-area,
+#message-input-area {
+  background-color: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 600px;
   margin-bottom: 20px;
 }
 
-#chat-list {
-  margin-bottom: 20px;
-  border: 1px solid #ccc;
+#messages {
+  border: 1px solid #ddd;
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
   padding: 10px;
-}
-
-.chat-item {
-  cursor: pointer;
-  margin-bottom: 5px;
-  padding: 5px;
-  border-bottom: 1px solid #eee;
-}
-
-#chat-area {
-  border: 1px solid #ccc;
-  padding: 10px;
-  height: 300px;
-  overflow-y: scroll;
   margin-bottom: 10px;
+  background-color: #e9e9e9;
+  border-radius: 4px;
+}
+
+.message {
+  margin-bottom: 8px;
+  padding: 5px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
 }
 
 #message-input-area {
@@ -34,20 +80,37 @@ body {
 
 #message-input {
   flex-grow: 1;
-  padding: 8px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-right: 10px;
 }
 
-#send-button {
-  padding: 8px 15px;
+button {
+  padding: 10px 15px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-.message {
-  margin-bottom: 8px;
-  padding: 5px;
-  border-radius: 5px;
-  background-color: #f0f0f0;
+button:hover {
+  background-color: #0056b3;
 }
 
-.message strong {
-  font-weight: bold;
+#available-chats ul {
+  list-style: none;
+  padding: 0;
+}
+
+#available-chats li {
+  background-color: #f9f9f9;
+  border: 1px solid #eee;
+  padding: 10px;
+  margin-bottom: 5px;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }

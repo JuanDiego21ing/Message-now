@@ -1,39 +1,41 @@
 <!DOCTYPE html>
 <html lang="es">
-<head>
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chat Distribuido P2P</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
-</head>
-<body>
+  </head>
+  <body>
     <div id="user-setup">
-        <label for="username">Tu nombre:</label>
-        <input type="text" id="username" placeholder="Ingresa tu nombre" />
-        <button id="set-username">Guardar Nombre</button>
+      <label for="username">Tu nombre:</label>
+      <input type="text" id="username" placeholder="Ingresa tu nombre" />
+      <button id="set-username">Guardar Nombre</button>
     </div>
 
-    <div style="margin-top: 20px;">
-        <button id="create-chat" style="display: none;">Crear Nuevo Chat</button>
-        <div id="chat-list" style="margin-top: 20px; display: none;">
-            <h2>Chats Disponibles</h2>
-            <ul id="available-chats">
-                <li>Conectando al servidor de señalización...</li>
-            </ul>
-        </div>
+    <div id="status-message" class="status-message" style="display: none"></div>
+
+    <div style="margin-top: 20px">
+      <button id="create-chat" style="display: none">Crear Nuevo Chat</button>
+      <div id="chat-list" style="margin-top: 20px; display: none">
+        <h2>Chats Disponibles</h2>
+        <ul id="available-chats">
+          <li>Conectando al servidor de señalización...</li>
+        </ul>
+      </div>
     </div>
 
-    <div id="chat-area" style="display: none;">
-        <h2>Chat</h2>
-        <div id="messages"></div>
+    <div id="chat-area" style="display: none">
+      <h2>Chat</h2>
+      <div id="messages"></div>
     </div>
 
-    <div id="message-input-area" style="display: none;">
-        <input type="text" id="message-input" placeholder="Escribe tu mensaje" />
-        <button id="send-button">Enviar</button>
+    <div id="message-input-area" style="display: none">
+      <input type="text" id="message-input" placeholder="Escribe tu mensaje" />
+      <button id="send-button">Enviar</button>
     </div>
 
     <script src="script.js"></script>
-</body>
+  </body>
 </html>
