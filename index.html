@@ -1,52 +1,39 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chat Distribuido</title>
+    <title>Chat Distribuido P2P</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
-  </head>
-  <body>
+</head>
+<body>
     <div id="user-setup">
-      <label for="username">Tu nombre:</label>
-      <input type="text" id="username" placeholder="Ingresa tu nombre" />
-      <button id="set-username">Guardar Nombre</button>
+        <label for="username">Tu nombre:</label>
+        <input type="text" id="username" placeholder="Ingresa tu nombre" />
+        <button id="set-username">Guardar Nombre</button>
     </div>
 
-    <button id="create-chat">Crear Nuevo Chat</button>
-
-    <div id="join-chat-section" style="margin-top: 20px">
-      <h2>Unirse a un Chat Existente (Prueba Manual)</h2>
-      <label for="offer-input">Pegar Oferta Aquí:</label><br />
-      <textarea id="offer-input" rows="5" cols="50"></textarea><br />
-      <button id="join-button">Unirse al Chat</button>
+    <div style="margin-top: 20px;">
+        <button id="create-chat" style="display: none;">Crear Nuevo Chat</button>
+        <div id="chat-list" style="margin-top: 20px; display: none;">
+            <h2>Chats Disponibles</h2>
+            <ul id="available-chats">
+                <li>Conectando al servidor de señalización...</li>
+            </ul>
+        </div>
     </div>
 
-    <div id="process-answer-section" style="margin-top: 20px">
-      <h2>Procesar Respuesta (Prueba Manual - Iniciador)</h2>
-      <label for="answer-input">Pegar Respuesta Aquí:</label><br />
-      <textarea id="answer-input" rows="5" cols="50"></textarea><br />
-      <button id="process-answer-button">Procesar Respuesta</button>
+    <div id="chat-area" style="display: none;">
+        <h2>Chat</h2>
+        <div id="messages"></div>
     </div>
 
-    <div id="chat-list">
-      <h2>Chats Disponibles</h2>
-      <ul id="available-chats">
-        <li>No hay chats disponibles aún.</li>
-      </ul>
-    </div>
-
-    <div id="chat-area">
-      <h2>Chat</h2>
-      <div id="messages"></div>
-    </div>
-
-    <div id="message-input-area">
-      <input type="text" id="message-input" placeholder="Escribe tu mensaje" />
-      <button id="send-button">Enviar</button>
+    <div id="message-input-area" style="display: none;">
+        <input type="text" id="message-input" placeholder="Escribe tu mensaje" />
+        <button id="send-button">Enviar</button>
     </div>
 
     <script src="script.js"></script>
-  </body>
+</body>
 </html>

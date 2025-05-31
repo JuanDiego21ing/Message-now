@@ -1,0 +1,15 @@
+{
+  "name": "message-now",
+  "version": "1.0.0",
+  "description": "repo para el desarrollo de la pagina web del proyecto de sistemas distribuidos",
+  "main": "script.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.18.2"
+  }
+}
