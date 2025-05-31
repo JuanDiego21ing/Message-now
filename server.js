@@ -5,31 +5,29 @@ const wss = new WebSocket.Server({ port: 8081 }); // Usamos el puerto 8081
 
 console.log("Servidor de señalización iniciado en ws://localhost:8081");
 
-// Almacena todas las conexiones WebSocket activas, mapeadas por un ID de cliente único.
 const clients = new Map();
 
-// Almacena información de los chats activos y sus miembros.
-// { chatId: { creator: 'username', members: { clientId: 'username', ... } }, ... }
+// activeChats ahora almacenará también el nombre de la sala
+// { chatId: { creator: 'username', chatName: 'nombre_sala', members: { clientId: 'username', ... } }, ... }
 const activeChats = {};
 
 wss.on("connection", (ws) => {
-  // Generar un ID único para cada cliente conectado
   const clientId = generateUniqueId();
   clients.set(clientId, ws);
-  ws.clientId = clientId; // Añadir el clientId al objeto ws para fácil referencia
+  ws.clientId = clientId;
 
   console.log(
     `Nuevo cliente conectado. ID: ${clientId}. Total de clientes: ${clients.size}`
   );
 
-  // Informar al cliente su propio ID para que pueda identificar sus señales
   ws.send(JSON.stringify({ type: "your_id", clientId: clientId }));
 
   // Enviar la lista de chats activos al cliente recién conectado
   const chatListToSend = Object.keys(activeChats).map((chatId) => ({
     chatId: chatId,
     creator: activeChats[chatId].creator,
-    memberCount: Object.keys(activeChats[chatId].members).length, // Número de miembros
+    chatName: activeChats[chatId].chatName, // ¡Nuevo! Incluir el nombre de la sala
+    memberCount: Object.keys(activeChats[chatId].members).length,
   }));
   ws.send(JSON.stringify({ type: "chat_list", chats: chatListToSend }));
 
@@ -40,7 +38,6 @@ wss.on("connection", (ws) => {
 
       switch (data.type) {
         case "register_user":
-          // Un cliente se registra con su username en un chat específico
           const regChatId = data.chatId;
           const regUsername = data.username;
 
@@ -57,18 +54,16 @@ wss.on("connection", (ws) => {
             return;
           }
 
-          // Asociar el clientId y username a la sesión del chat
           activeChats[regChatId].members[clientId] = regUsername;
-          ws.username = regUsername; // Asociar username al socket
-          ws.currentChatId = regChatId; // Asociar chatId al socket
+          ws.username = regUsername;
+          ws.currentChatId = regChatId;
 
           console.log(
             `Usuario ${regUsername} (ID: ${clientId}) se unió al chat ${regChatId}.`
           );
 
-          // Notificar a TODOS los miembros del chat (incluido el recién unido)
-          // quiénes son los otros miembros para que puedan establecer conexiones P2P.
           const chatMembers = activeChats[regChatId].members;
+          const chatName = activeChats[regChatId].chatName; // Obtener el nombre de la sala
           for (const memberClientId in chatMembers) {
             const memberSocket = clients.get(memberClientId);
             if (memberSocket && memberSocket.readyState === WebSocket.OPEN) {
@@ -76,7 +71,8 @@ wss.on("connection", (ws) => {
                 JSON.stringify({
                   type: "chat_members_update",
                   chatId: regChatId,
-                  members: chatMembers, // Envía todo el mapa de miembros
+                  chatName: chatName, // ¡Nuevo! Enviar el nombre de la sala en la actualización
+                  members: chatMembers,
                 })
               );
             }
@@ -84,8 +80,8 @@ wss.on("connection", (ws) => {
           break;
 
         case "create_chat":
-          // Cuando un cliente crea un chat (es el primer miembro)
           const newChatId = data.chatId;
+          const newChatName = data.chatName; // ¡Nuevo! Obtener el nombre de la sala
           const creatorUsername = data.username;
 
           if (activeChats[newChatId]) {
@@ -98,17 +94,16 @@ wss.on("connection", (ws) => {
 
           activeChats[newChatId] = {
             creator: creatorUsername,
-            members: { [clientId]: creatorUsername }, // El creador es el primer miembro
+            chatName: newChatName, // ¡Nuevo! Almacenar el nombre de la sala
+            members: { [clientId]: creatorUsername },
           };
           ws.username = creatorUsername;
           ws.currentChatId = newChatId;
 
           console.log(
-            `Chat creado. ID: ${newChatId} por ${creatorUsername} (ID: ${clientId})`
+            `Chat creado. ID: ${newChatId}, Nombre: ${newChatName} por ${creatorUsername} (ID: ${clientId})`
           );
 
-          // Notificar a todos los clientes CONECTADOS (no solo los del chat)
-          // sobre el nuevo chat disponible en la lista general.
           clients.forEach((clientSocket) => {
             if (clientSocket.readyState === WebSocket.OPEN) {
               clientSocket.send(
@@ -116,6 +111,7 @@ wss.on("connection", (ws) => {
                   type: "new_chat_available",
                   chat: {
                     chatId: newChatId,
+                    chatName: newChatName, // ¡Nuevo! Incluir el nombre de la sala
                     creator: creatorUsername,
                     memberCount: 1,
                   },
@@ -124,22 +120,20 @@ wss.on("connection", (ws) => {
             }
           });
 
-          // Inmediatamente después de crear el chat, enviar una actualización de miembros
-          // para que el creador pueda iniciar las conexiones P2P si alguien más está ya presente (raro pero posible)
-          // o simplemente establecer su propio estado de UI.
+          // Inmediatamente después de crear el chat, enviar una actualización de miembros al creador
           ws.send(
             JSON.stringify({
               type: "chat_members_update",
               chatId: newChatId,
+              chatName: newChatName, // ¡Nuevo!
               members: activeChats[newChatId].members,
             })
           );
           break;
 
         case "signal":
-          // Reenviar señales (ofertas, respuestas, ICE candidates) entre dos peers específicos
           const senderClientId = ws.clientId;
-          const receiverClientId = data.receiverId; // El cliente al que va dirigida la señal
+          const receiverClientId = data.receiverId;
           const signalData = data.signal;
 
           const receiverSocket = clients.get(receiverClientId);
@@ -150,14 +144,13 @@ wss.on("connection", (ws) => {
                 type: "signal",
                 senderId: senderClientId,
                 signal: signalData,
-                chatId: data.chatId, // Asegurarnos de que el chatId se reenvíe
+                chatId: data.chatId,
               })
             );
           } else {
             console.warn(
               `Receptor ${receiverClientId} no encontrado o no listo para señal.`
             );
-            // Opcional: enviar un mensaje de error al remitente
             ws.send(
               JSON.stringify({
                 type: "error",
@@ -179,10 +172,8 @@ wss.on("connection", (ws) => {
               `Usuario ${ws.username} (ID: ${clientId}) dejó el chat ${leaveChatId}.`
             );
 
-            // Limpiar el estado del socket (importante para evitar reenvío a este chat)
             delete ws.currentChatId;
 
-            // Si no quedan miembros en el chat, eliminar el chat
             if (Object.keys(activeChats[leaveChatId].members).length === 0) {
               console.log(`Chat ${leaveChatId} vacío, eliminando.`);
               delete activeChats[leaveChatId];
@@ -197,8 +188,8 @@ wss.on("connection", (ws) => {
                 }
               });
             } else {
-              // Notificar a los miembros restantes sobre la actualización
               const remainingMembers = activeChats[leaveChatId].members;
+              const chatName = activeChats[leaveChatId].chatName; // Obtener el nombre de la sala
               for (const memberClientId in remainingMembers) {
                 const memberSocket = clients.get(memberClientId);
                 if (
@@ -209,6 +200,7 @@ wss.on("connection", (ws) => {
                     JSON.stringify({
                       type: "chat_members_update",
                       chatId: leaveChatId,
+                      chatName: chatName, // ¡Nuevo!
                       members: remainingMembers,
                     })
                   );
@@ -223,10 +215,10 @@ wss.on("connection", (ws) => {
           break;
 
         case "request_chat_list":
-          // Cliente solicita la lista de chats (ej. al volver al lobby)
           const currentChatList = Object.keys(activeChats).map((chatId) => ({
             chatId: chatId,
             creator: activeChats[chatId].creator,
+            chatName: activeChats[chatId].chatName, // ¡Nuevo!
             memberCount: Object.keys(activeChats[chatId].members).length,
           }));
           ws.send(
@@ -257,9 +249,8 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     console.log(`Cliente desconectado. ID: ${ws.clientId}`);
-    clients.delete(ws.clientId); // Eliminar de la lista global de clientes
+    clients.delete(ws.clientId);
 
-    // Lógica para limpiar chats si el cliente desconectado era un miembro
     if (ws.currentChatId && activeChats[ws.currentChatId]) {
       const chat = activeChats[ws.currentChatId];
       if (chat.members[ws.clientId]) {
@@ -271,13 +262,11 @@ wss.on("connection", (ws) => {
         );
 
         if (Object.keys(chat.members).length === 0) {
-          // Chat vacío, eliminarlo
           console.log(
             `Chat ${ws.currentChatId} vacío debido a desconexión, eliminando.`
           );
           delete activeChats[ws.currentChatId];
           clients.forEach((clientSocket) => {
-            // Notificar a todos sobre la eliminación
             if (clientSocket.readyState === WebSocket.OPEN) {
               clientSocket.send(
                 JSON.stringify({
@@ -288,8 +277,8 @@ wss.on("connection", (ws) => {
             }
           });
         } else {
-          // Notificar a los miembros restantes sobre la desconexión
           const remainingMembers = chat.members;
+          const chatName = chat.chatName; // Obtener el nombre de la sala
           for (const memberClientId in remainingMembers) {
             const memberSocket = clients.get(memberClientId);
             if (memberSocket && memberSocket.readyState === WebSocket.OPEN) {
@@ -297,6 +286,7 @@ wss.on("connection", (ws) => {
                 JSON.stringify({
                   type: "chat_members_update",
                   chatId: ws.currentChatId,
+                  chatName: chatName, // ¡Nuevo!
                   members: remainingMembers,
                 })
               );
@@ -312,7 +302,6 @@ wss.on("connection", (ws) => {
   });
 });
 
-// Función simple para generar IDs únicos
 function generateUniqueId() {
   return (
     Math.random().toString(36).substring(2, 15) +

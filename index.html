@@ -31,12 +31,38 @@
       <button id="leave-chat-button" style="display: none">
         Salir del Chat
       </button>
-      <div id="messages"></div>
+
+      <div style="display: flex; gap: 20px">
+        <div id="chat-members">
+          <h3>Participantes</h3>
+          <ul id="members-list"></ul>
+        </div>
+        <div style="flex-basis: 75%">
+          <div id="messages"></div>
+        </div>
+      </div>
     </div>
 
     <div id="message-input-area" style="display: none">
       <input type="text" id="message-input" placeholder="Escribe tu mensaje" />
       <button id="send-button">Enviar</button>
+    </div>
+
+    <div id="room-name-modal" class="modal" style="display: none">
+      <div class="modal-content">
+        <h3>Nombre de la Sala de Chat</h3>
+        <label for="room-name-input">Nombre:</label>
+        <input
+          type="text"
+          id="room-name-input"
+          placeholder="Ej: Equipo A, Amigos, etc."
+          maxlength="30"
+        />
+        <div class="modal-buttons">
+          <button id="confirm-room-name-button">Crear Sala</button>
+          <button id="cancel-room-name-button">Cancelar</button>
+        </div>
+      </div>
     </div>
 
     <script src="script.js"></script>
