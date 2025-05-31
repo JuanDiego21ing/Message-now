@@ -8,26 +8,22 @@ const availableChatsList = document.getElementById("available-chats");
 const messagesDiv = document.getElementById("messages");
 const messageInput = document.getElementById("message-input");
 const sendButton = document.getElementById("send-button");
+const leaveChatButton = document.getElementById("leave-chat-button"); // Nuevo botón para salir del chat
 
-// Nuevas referencias para elementos de la UI de estado
-const statusMessageDiv = document.getElementById("status-message"); // Añadiremos este div en el HTML
+const statusMessageDiv = document.getElementById("status-message");
 
-// WebSocket para el servidor de señalización
 let signalingSocket;
-const SIGNALING_SERVER_URL = "ws://localhost:8081"; // Asegúrate de que coincida con el puerto de tu server.js
-const RECONNECT_INTERVAL = 5000; // Intentar reconectar cada 5 segundos
+const SIGNALING_SERVER_URL = "ws://localhost:8081";
+const RECONNECT_INTERVAL = 5000;
 
-// Almacenará todas las conexiones P2P activas, mapeadas por el clientId del peer remoto.
-// { remoteClientId: SimplePeer_instance, ... }
 const activePeers = new Map();
-let currentChatId = null; // El ID del chat al que estamos conectados
-let currentChatMembers = {}; // Guardará la lista de miembros del chat actual { clientId: username, ... }
+let currentChatId = null;
+let currentChatMembers = {};
 
 // --- Funciones de Utilidad y UI ---
 function displayMessage(sender, text, isMe) {
   const messageDiv = document.createElement("div");
   messageDiv.classList.add("message");
-  // Sanitizar el texto para evitar inyecciones HTML básicas
   const sanitizedText = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -36,15 +32,14 @@ function displayMessage(sender, text, isMe) {
     isMe ? "Yo" : sender
   }:</strong> ${sanitizedText}`;
   messagesDiv.appendChild(messageDiv);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight; // Hacer scroll al último mensaje
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-// Función para mostrar mensajes de estado al usuario
 function setStatusMessage(message, type = "info") {
   if (statusMessageDiv) {
     statusMessageDiv.textContent = message;
-    statusMessageDiv.className = `status-message ${type}`; // Para aplicar estilos CSS (info, error, success)
-    statusMessageDiv.style.display = "block"; // Asegurarse de que sea visible
+    statusMessageDiv.className = `status-message ${type}`;
+    statusMessageDiv.style.display = "block";
   }
 }
 
@@ -56,7 +51,43 @@ function clearStatusMessage() {
   }
 }
 
-// Función para inicializar un nuevo SimplePeer
+// Función para mostrar la interfaz de chat
+function showChatUI() {
+  document.getElementById("user-setup").style.display = "none";
+  createChatButton.style.display = "none";
+  document.getElementById("chat-list").style.display = "none";
+
+  document.getElementById("chat-area").style.display = "block";
+  document.getElementById("message-input-area").style.display = "flex";
+  if (leaveChatButton) leaveChatButton.style.display = "inline-block"; // Mostrar botón de salir
+
+  clearStatusMessage();
+}
+
+// Función para mostrar la interfaz de "lobby" (crear/unirse a chat)
+function showLobbyUI() {
+  document.getElementById("user-setup").style.display = "none"; // Nombre ya ingresado
+  createChatButton.style.display = "block"; // Mostrar botón de crear
+  document.getElementById("chat-list").style.display = "block"; // Mostrar lista de chats
+
+  document.getElementById("chat-area").style.display = "none";
+  document.getElementById("message-input-area").style.display = "none";
+  if (leaveChatButton) leaveChatButton.style.display = "none"; // Ocultar botón de salir
+
+  messagesDiv.innerHTML = ""; // Limpiar mensajes del chat anterior
+  messageInput.value = ""; // Limpiar input de mensaje
+
+  // Re-solicitar la lista de chats si es necesario, o simplemente mostrar la que tenemos
+  if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
+    signalingSocket.send(JSON.stringify({ type: "request_chat_list" })); // Pedir la lista de chats de nuevo
+  }
+  clearStatusMessage();
+  setStatusMessage(
+    "Bienvenido de nuevo al lobby. Crea o únete a un chat.",
+    "info"
+  );
+}
+
 function createPeer(remoteClientId, remoteUsername, initiator) {
   console.log(
     `Creando peer con ${remoteUsername} (ID: ${remoteClientId}). Iniciador: ${initiator}`
@@ -69,7 +100,6 @@ function createPeer(remoteClientId, remoteUsername, initiator) {
   peer.remoteClientId = remoteClientId;
 
   peer.on("signal", (data) => {
-    // Enviar la señal al servidor de señalización, dirigida al peer remoto
     console.log(
       `Enviando señal a ${remoteUsername} (ID: ${remoteClientId}). Tipo: ${data.type}`
     );
@@ -89,20 +119,12 @@ function createPeer(remoteClientId, remoteUsername, initiator) {
     );
     displayMessage("Sistema", `${peer.remoteUsername} se ha conectado.`, false);
     setStatusMessage(`Conectado al chat.`, "success");
-
-    // Una vez conectado con al menos un peer, mostrar la UI de chat
-    document.getElementById("user-setup").style.display = "none";
-    createChatButton.style.display = "none";
-    document.getElementById("chat-list").style.display = "none";
-    document.getElementById("chat-area").style.display = "block";
-    document.getElementById("message-input-area").style.display = "flex";
-    clearStatusMessage(); // Limpiar el mensaje de "conectando"
+    showChatUI(); // Mostrar la UI de chat una vez conectado con al menos un peer
   });
 
   peer.on("data", (data) => {
     try {
       const message = JSON.parse(data.toString());
-      // Validar la estructura del mensaje para evitar errores si no es un JSON esperado
       if (
         message &&
         typeof message.sender === "string" &&
@@ -135,13 +157,13 @@ function createPeer(remoteClientId, remoteUsername, initiator) {
 
     console.log(`Peers activos restantes: ${activePeers.size}`);
     if (activePeers.size === 0 && currentChatId) {
-      // Si no quedan peers activos y estábamos en un chat
       setStatusMessage(
         "Todos los demás participantes se han desconectado del chat.",
         "warning"
       );
-      // Podríamos ofrecer un botón para crear otro chat o volver a la lista
-      setTimeout(() => location.reload(), 3000); // Recargar después de 3 segundos para volver a la lista
+      // Si no hay más peers, volvemos al lobby
+      setTimeout(showLobbyUI, 3000);
+      currentChatId = null; // Reseteamos el chat ID
     }
   });
 
@@ -150,14 +172,12 @@ function createPeer(remoteClientId, remoteUsername, initiator) {
       `Error del Peer WebRTC con ${peer.remoteUsername} (ID: ${peer.remoteClientId}):`,
       err
     );
-    // Podríamos dar más detalle dependiendo del tipo de error
     setStatusMessage(
       `Error con la conexión a ${peer.remoteUsername}: ${err.message}.`,
       "error"
     );
-    // Asegurarse de que el peer se destruya para limpiar recursos
     peer.destroy();
-    activePeers.delete(peer.remoteClientId); // Eliminar el peer de la colección
+    activePeers.delete(remoteClientId);
   });
 
   activePeers.set(remoteClientId, peer);
@@ -166,7 +186,6 @@ function createPeer(remoteClientId, remoteUsername, initiator) {
 
 // --- Configuración del WebSocket de Señalización ---
 function connectToSignalingServer() {
-  // Si ya existe un socket, no crear uno nuevo
   if (
     signalingSocket &&
     (signalingSocket.readyState === WebSocket.OPEN ||
@@ -181,15 +200,12 @@ function connectToSignalingServer() {
 
   signalingSocket.onopen = () => {
     console.log("Conectado al servidor de señalización");
-    setStatusMessage(
-      "Conectado al servidor de señalización. Cargando chats...",
-      "success"
-    );
+    setStatusMessage("Conectado al servidor de señalización.", "success");
     if (username) {
-      document.getElementById("chat-list").style.display = "block";
-      createChatButton.style.display = "block";
+      // Si el usuario ya está logeado, mostramos el lobby
+      showLobbyUI();
     }
-    clearStatusMessage(); // Limpiar después de un breve momento
+    // Se espera el mensaje 'your_id' y 'chat_list' del servidor
   };
 
   signalingSocket.onmessage = async (event) => {
@@ -215,10 +231,10 @@ function connectToSignalingServer() {
               "El chat al que estabas conectado se cerró en el servidor.",
               "warning"
             );
-            activePeers.forEach((peer) => peer.destroy()); // Cerrar todas las conexiones P2P
+            activePeers.forEach((peer) => peer.destroy());
             activePeers.clear();
             currentChatId = null;
-            setTimeout(() => location.reload(), 3000);
+            setTimeout(showLobbyUI, 3000); // Volver al lobby
           }
           break;
         case "chat_members_update":
@@ -235,8 +251,6 @@ function connectToSignalingServer() {
           if (peerToSignal) {
             peerToSignal.signal(signalData);
           } else if (signalData.type === "offer") {
-            // Si recibimos una oferta y no tenemos un peer, lo creamos
-            // Asegúrate de que currentChatMembers tenga el username
             const remoteUsername =
               currentChatMembers[senderClientId] ||
               `Usuario ${senderClientId.substring(0, 8)}`;
@@ -246,7 +260,6 @@ function connectToSignalingServer() {
             console.warn(
               `Señal recibida de ${senderClientId} sin peer existente o no es oferta inicial. Ignorada.`
             );
-            // Podríamos pedir al servidor que reenvíe la lista de miembros para resincronizar
           }
           break;
         case "error":
@@ -273,10 +286,9 @@ function connectToSignalingServer() {
       "Desconectado del servidor de señalización. Reintentando...",
       "error"
     );
-    // Destruir peers existentes si la conexión con el servidor se pierde
     activePeers.forEach((peer) => peer.destroy());
     activePeers.clear();
-    currentChatId = null; // Resetear el chat actual si la conexión al servidor se pierde
+    currentChatId = null;
     setTimeout(connectToSignalingServer, RECONNECT_INTERVAL);
   };
 
@@ -286,25 +298,21 @@ function connectToSignalingServer() {
       "Fallo en la conexión al servidor de señalización. Asegúrate de que esté ejecutándose.",
       "error"
     );
-    // No reintentar inmediatamente aquí; onclose se encargará del reintento
   };
 }
 
-// Maneja la actualización de miembros del chat para establecer/cerrar conexiones P2P
 function handleChatMembersUpdate(members) {
   currentChatMembers = members;
 
   // Conectar con nuevos miembros
   for (const remoteClientId in members) {
     if (remoteClientId !== clientId && !activePeers.has(remoteClientId)) {
-      // El iniciador es el que tiene el ClientID lexicográficamente menor
       const initiator = clientId < remoteClientId;
       createPeer(remoteClientId, members[remoteClientId], initiator);
     }
   }
 
   // Desconectar de miembros que ya no están en el chat
-  // Crear una lista de peers a eliminar para evitar problemas al modificar el Map mientras se itera
   const peersToDestroy = [];
   activePeers.forEach((peerInstance, remoteClientId) => {
     if (!members[remoteClientId]) {
@@ -315,7 +323,7 @@ function handleChatMembersUpdate(members) {
     }
   });
 
-  peersToDestroy.forEach((peer) => peer.destroy()); // Destruir fuera del bucle forEach del Map
+  peersToDestroy.forEach((peer) => peer.destroy());
 }
 
 // --- Event Listeners Iniciales / Ocultar UI ---
@@ -327,13 +335,14 @@ function hideInitialUI() {
   if (document.getElementById("chat-list"))
     document.getElementById("chat-list").style.display = "none";
   if (createChatButton) createChatButton.style.display = "none";
-  if (statusMessageDiv) statusMessageDiv.style.display = "none"; // Ocultar el div de estado al inicio
+  if (statusMessageDiv) statusMessageDiv.style.display = "none";
+  if (leaveChatButton) leaveChatButton.style.display = "none"; // Ocultar botón de salir al inicio
 }
 document.addEventListener("DOMContentLoaded", hideInitialUI);
 
 setUsernameButton.addEventListener("click", () => {
   username = usernameInput.value.trim();
-  if (username && username.length > 2 && username !== "Sistema") {
+  if (username && username.length >= 3 && username !== "Sistema") {
     document.getElementById("user-setup").style.display = "none";
     setStatusMessage(`Tu nombre: ${username}.`, "info");
     connectToSignalingServer();
@@ -342,7 +351,7 @@ setUsernameButton.addEventListener("click", () => {
       "Por favor, ingresa un nombre válido (mínimo 3 caracteres, no 'Sistema').",
       "error"
     );
-    usernameInput.value = ""; // Limpiar el input
+    usernameInput.value = "";
   }
 });
 
@@ -374,13 +383,19 @@ createChatButton.addEventListener("click", () => {
     })
   );
 
-  createChatButton.disabled = true;
-  document.getElementById("chat-list").style.display = "none";
+  // El creador se une directamente a la interfaz de chat
+  showChatUI();
   displayMessage(
     "Sistema",
-    `Has creado el chat. Esperando a otros participantes...`,
+    `Has creado el chat. Comparte el ID (${currentChatId.substring(
+      0,
+      8
+    )}...) para que otros se unan.`,
     false
   );
+  displayMessage("Sistema", `Esperando a otros participantes...`, false);
+
+  // No es necesario deshabilitar el botón de crear chat, showChatUI lo oculta
 });
 
 // Lógica para la Lista de Chats
@@ -442,7 +457,8 @@ function requestJoinChat(chatId, creator) {
       clientId: clientId,
     })
   );
-  document.getElementById("chat-list").style.display = "none";
+
+  showChatUI(); // Mostrar la UI de chat inmediatamente al intentar unirse
   displayMessage(
     "Sistema",
     `Intentando unirse al chat de ${creator}...`,
@@ -453,11 +469,13 @@ function requestJoinChat(chatId, creator) {
 sendButton.addEventListener("click", () => {
   const message = messageInput.value.trim();
   if (message) {
-    // Permitir enviar si hay mensaje, la validación de conexión se hará después
-    if (activePeers.size === 0) {
+    if (activePeers.size === 0 && currentChatId) {
+      // Permitir enviar si eres el único en el chat (como creador)
+      displayMessage(username, message, true); // Muestra tu propio mensaje
+      messageInput.value = "";
       setStatusMessage(
-        "No hay otros participantes conectados en este chat para enviar mensajes.",
-        "warning"
+        "Eres el único en este chat por ahora. Esperando a otros...",
+        "info"
       );
       return;
     }
@@ -487,9 +505,41 @@ sendButton.addEventListener("click", () => {
   }
 });
 
-// Listener para el campo de entrada de mensaje (Enter)
 messageInput.addEventListener("keypress", (event) => {
   if (event.key === "Enter") {
     sendButton.click();
+  }
+});
+
+// --- Nuevo Event Listener para el botón de salir del chat ---
+leaveChatButton.addEventListener("click", () => {
+  if (
+    currentChatId &&
+    signalingSocket &&
+    signalingSocket.readyState === WebSocket.OPEN
+  ) {
+    // Enviar un mensaje al servidor para indicar que estamos abandonando el chat
+    signalingSocket.send(
+      JSON.stringify({
+        type: "leave_chat",
+        chatId: currentChatId,
+        clientId: clientId,
+      })
+    );
+
+    // Limpiar todas las conexiones P2P activas
+    activePeers.forEach((peer) => peer.destroy());
+    activePeers.clear();
+
+    currentChatId = null; // Reiniciar el ID del chat
+    currentChatMembers = {}; // Limpiar miembros
+
+    showLobbyUI(); // Volver a la interfaz del lobby
+    setStatusMessage(
+      "Has salido del chat. Puedes crear uno nuevo o unirte a uno existente.",
+      "success"
+    );
+  } else {
+    setStatusMessage("No estás actualmente en un chat activo.", "warning");
   }
 });

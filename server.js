@@ -1,14 +1,12 @@
 // server.js
 const WebSocket = require("ws");
 
-const wss = new WebSocket.Server({ port: 8081 }); // Usamos el puerto 8081 que te funcionó
+const wss = new WebSocket.Server({ port: 8081 }); // Usamos el puerto 8081
 
 console.log("Servidor de señalización iniciado en ws://localhost:8081");
 
 // Almacena todas las conexiones WebSocket activas, mapeadas por un ID de cliente único.
-// Esto es crucial para poder dirigir señales a clientes específicos.
-// { clientId: ws_object, ... }
-const clients = new Map(); // Usamos un Map para asociar IDs con sockets
+const clients = new Map();
 
 // Almacena información de los chats activos y sus miembros.
 // { chatId: { creator: 'username', members: { clientId: 'username', ... } }, ... }
@@ -49,6 +47,12 @@ wss.on("connection", (ws) => {
           if (!activeChats[regChatId]) {
             console.warn(
               `Intento de registrar usuario en chat no existente: ${regChatId}`
+            );
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                message: `Chat con ID ${regChatId} no encontrado.`,
+              })
             );
             return;
           }
@@ -119,6 +123,17 @@ wss.on("connection", (ws) => {
               );
             }
           });
+
+          // Inmediatamente después de crear el chat, enviar una actualización de miembros
+          // para que el creador pueda iniciar las conexiones P2P si alguien más está ya presente (raro pero posible)
+          // o simplemente establecer su propio estado de UI.
+          ws.send(
+            JSON.stringify({
+              type: "chat_members_update",
+              chatId: newChatId,
+              members: activeChats[newChatId].members,
+            })
+          );
           break;
 
         case "signal":
@@ -146,7 +161,7 @@ wss.on("connection", (ws) => {
             ws.send(
               JSON.stringify({
                 type: "error",
-                message: `Receptor ${receiverClientId} no disponible.`,
+                message: `El destinatario de la señal ${receiverClientId} no está disponible.`,
               })
             );
           }
@@ -163,6 +178,9 @@ wss.on("connection", (ws) => {
             console.log(
               `Usuario ${ws.username} (ID: ${clientId}) dejó el chat ${leaveChatId}.`
             );
+
+            // Limpiar el estado del socket (importante para evitar reenvío a este chat)
+            delete ws.currentChatId;
 
             // Si no quedan miembros en el chat, eliminar el chat
             if (Object.keys(activeChats[leaveChatId].members).length === 0) {
@@ -197,13 +215,43 @@ wss.on("connection", (ws) => {
                 }
               }
             }
+          } else {
+            console.warn(
+              `Intento de salir de chat no existente o no se era miembro: ${leaveChatId} por ${clientId}`
+            );
           }
-          // Limpiar el estado del socket
-          delete ws.currentChatId;
+          break;
+
+        case "request_chat_list":
+          // Cliente solicita la lista de chats (ej. al volver al lobby)
+          const currentChatList = Object.keys(activeChats).map((chatId) => ({
+            chatId: chatId,
+            creator: activeChats[chatId].creator,
+            memberCount: Object.keys(activeChats[chatId].members).length,
+          }));
+          ws.send(
+            JSON.stringify({ type: "chat_list", chats: currentChatList })
+          );
+          break;
+
+        default:
+          console.warn(`Tipo de mensaje desconocido: ${data.type}`);
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: `Tipo de mensaje desconocido: ${data.type}`,
+            })
+          );
           break;
       }
     } catch (e) {
       console.error("Error al parsear mensaje del cliente:", e.message);
+      ws.send(
+        JSON.stringify({
+          type: "error",
+          message: "Formato de mensaje JSON inválido.",
+        })
+      );
     }
   });
 
@@ -217,7 +265,9 @@ wss.on("connection", (ws) => {
       if (chat.members[ws.clientId]) {
         delete chat.members[ws.clientId];
         console.log(
-          `Miembro ${ws.username} (ID: ${ws.clientId}) se desconectó del chat ${ws.currentChatId}.`
+          `Miembro ${ws.username || ws.clientId} se desconectó del chat ${
+            ws.currentChatId
+          }.`
         );
 
         if (Object.keys(chat.members).length === 0) {
