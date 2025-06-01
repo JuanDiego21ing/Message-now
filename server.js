@@ -54,6 +54,18 @@ wss.on("connection", (ws) => {
             return;
           }
 
+          // Impedir que un usuario se una si ya está en otro chat.
+          // Aunque el cliente ya tiene lógica para esto, el servidor debe ser robusto.
+          if (ws.currentChatId && ws.currentChatId !== regChatId) {
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                message: "Ya estás en otro chat. Sal de él primero.",
+              })
+            );
+            return;
+          }
+
           activeChats[regChatId].members[clientId] = regUsername;
           ws.username = regUsername;
           ws.currentChatId = regChatId;
@@ -63,7 +75,7 @@ wss.on("connection", (ws) => {
           );
 
           const chatMembers = activeChats[regChatId].members;
-          const chatName = activeChats[regChatId].chatName; // Obtener el nombre de la sala
+          const chatName = activeChats[regChatId].chatName;
           for (const memberClientId in chatMembers) {
             const memberSocket = clients.get(memberClientId);
             if (memberSocket && memberSocket.readyState === WebSocket.OPEN) {
@@ -71,17 +83,21 @@ wss.on("connection", (ws) => {
                 JSON.stringify({
                   type: "chat_members_update",
                   chatId: regChatId,
-                  chatName: chatName, // ¡Nuevo! Enviar el nombre de la sala en la actualización
+                  chatName: chatName,
                   members: chatMembers,
                 })
               );
             }
           }
+          // Después de unirse, notificar a todos los clientes sobre el cambio de miembros en la sala
+          // (Esto ya se hace en el bucle de arriba, pero lo dejo aquí para claridad si hubiera otra lógica)
+          // Además, enviamos la lista actualizada de chats por si el número de miembros cambió.
+          sendUpdatedChatListToAllClients();
           break;
 
         case "create_chat":
           const newChatId = data.chatId;
-          const newChatName = data.chatName; // ¡Nuevo! Obtener el nombre de la sala
+          const newChatName = data.chatName;
           const creatorUsername = data.username;
 
           if (activeChats[newChatId]) {
@@ -92,40 +108,39 @@ wss.on("connection", (ws) => {
             return;
           }
 
+          // Impedir que un usuario cree un chat si ya está en otro.
+          if (ws.currentChatId) {
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                message:
+                  "Ya estás en un chat. Sal de él primero para crear uno nuevo.",
+              })
+            );
+            return;
+          }
+
           activeChats[newChatId] = {
             creator: creatorUsername,
-            chatName: newChatName, // ¡Nuevo! Almacenar el nombre de la sala
+            chatName: newChatName,
             members: { [clientId]: creatorUsername },
           };
           ws.username = creatorUsername;
           ws.currentChatId = newChatId;
 
           console.log(
-            `Chat creado. ID: ${newChatId}, Nombre: ${newChatName} por ${creatorUsername} (ID: ${clientId})`
+            `Chat creado. ID: ${newChatId}, Nombre: "${newChatName}" por ${creatorUsername} (ID: ${clientId})`
           );
 
-          clients.forEach((clientSocket) => {
-            if (clientSocket.readyState === WebSocket.OPEN) {
-              clientSocket.send(
-                JSON.stringify({
-                  type: "new_chat_available",
-                  chat: {
-                    chatId: newChatId,
-                    chatName: newChatName, // ¡Nuevo! Incluir el nombre de la sala
-                    creator: creatorUsername,
-                    memberCount: 1,
-                  },
-                })
-              );
-            }
-          });
+          // Notificar a todos los clientes sobre el nuevo chat disponible
+          sendUpdatedChatListToAllClients();
 
           // Inmediatamente después de crear el chat, enviar una actualización de miembros al creador
           ws.send(
             JSON.stringify({
               type: "chat_members_update",
               chatId: newChatId,
-              chatName: newChatName, // ¡Nuevo!
+              chatName: newChatName,
               members: activeChats[newChatId].members,
             })
           );
@@ -162,68 +177,13 @@ wss.on("connection", (ws) => {
 
         case "leave_chat":
           const leaveChatId = data.chatId || ws.currentChatId;
-          if (
-            leaveChatId &&
-            activeChats[leaveChatId] &&
-            activeChats[leaveChatId].members[clientId]
-          ) {
-            delete activeChats[leaveChatId].members[clientId];
-            console.log(
-              `Usuario ${ws.username} (ID: ${clientId}) dejó el chat ${leaveChatId}.`
-            );
+          const willDeleteChat = data.deleteChat || false; // Nuevo: indicador para eliminar el chat
 
-            delete ws.currentChatId;
-
-            if (Object.keys(activeChats[leaveChatId].members).length === 0) {
-              console.log(`Chat ${leaveChatId} vacío, eliminando.`);
-              delete activeChats[leaveChatId];
-              clients.forEach((clientSocket) => {
-                if (clientSocket.readyState === WebSocket.OPEN) {
-                  clientSocket.send(
-                    JSON.stringify({
-                      type: "chat_removed",
-                      chatId: leaveChatId,
-                    })
-                  );
-                }
-              });
-            } else {
-              const remainingMembers = activeChats[leaveChatId].members;
-              const chatName = activeChats[leaveChatId].chatName; // Obtener el nombre de la sala
-              for (const memberClientId in remainingMembers) {
-                const memberSocket = clients.get(memberClientId);
-                if (
-                  memberSocket &&
-                  memberSocket.readyState === WebSocket.OPEN
-                ) {
-                  memberSocket.send(
-                    JSON.stringify({
-                      type: "chat_members_update",
-                      chatId: leaveChatId,
-                      chatName: chatName, // ¡Nuevo!
-                      members: remainingMembers,
-                    })
-                  );
-                }
-              }
-            }
-          } else {
-            console.warn(
-              `Intento de salir de chat no existente o no se era miembro: ${leaveChatId} por ${clientId}`
-            );
-          }
+          handleUserLeave(ws, leaveChatId, willDeleteChat);
           break;
 
         case "request_chat_list":
-          const currentChatList = Object.keys(activeChats).map((chatId) => ({
-            chatId: chatId,
-            creator: activeChats[chatId].creator,
-            chatName: activeChats[chatId].chatName, // ¡Nuevo!
-            memberCount: Object.keys(activeChats[chatId].members).length,
-          }));
-          ws.send(
-            JSON.stringify({ type: "chat_list", chats: currentChatList })
-          );
+          sendUpdatedChatListToAllClients(ws); // Envía solo a quien lo solicita si se pasa ws
           break;
 
         default:
@@ -251,54 +211,17 @@ wss.on("connection", (ws) => {
     console.log(`Cliente desconectado. ID: ${ws.clientId}`);
     clients.delete(ws.clientId);
 
-    if (ws.currentChatId && activeChats[ws.currentChatId]) {
-      const chat = activeChats[ws.currentChatId];
-      if (chat.members[ws.clientId]) {
-        delete chat.members[ws.clientId];
-        console.log(
-          `Miembro ${ws.username || ws.clientId} se desconectó del chat ${
-            ws.currentChatId
-          }.`
-        );
-
-        if (Object.keys(chat.members).length === 0) {
-          console.log(
-            `Chat ${ws.currentChatId} vacío debido a desconexión, eliminando.`
-          );
-          delete activeChats[ws.currentChatId];
-          clients.forEach((clientSocket) => {
-            if (clientSocket.readyState === WebSocket.OPEN) {
-              clientSocket.send(
-                JSON.stringify({
-                  type: "chat_removed",
-                  chatId: ws.currentChatId,
-                })
-              );
-            }
-          });
-        } else {
-          const remainingMembers = chat.members;
-          const chatName = chat.chatName; // Obtener el nombre de la sala
-          for (const memberClientId in remainingMembers) {
-            const memberSocket = clients.get(memberClientId);
-            if (memberSocket && memberSocket.readyState === WebSocket.OPEN) {
-              memberSocket.send(
-                JSON.stringify({
-                  type: "chat_members_update",
-                  chatId: ws.currentChatId,
-                  chatName: chatName, // ¡Nuevo!
-                  members: remainingMembers,
-                })
-              );
-            }
-          }
-        }
-      }
+    // Cuando un cliente se desconecta, tratamos su salida como una salida de chat normal,
+    // pero sin la opción de 'deleteChat' por defecto, solo limpieza si la sala se vacía.
+    if (ws.currentChatId) {
+      handleUserLeave(ws, ws.currentChatId, false); // No forzamos la eliminación de la sala al desconectar
     }
   });
 
   ws.on("error", (error) => {
     console.error("Error en la conexión WebSocket con cliente:", error);
+    // Podrías intentar cerrar la conexión si no se cierra automáticamente
+    // ws.close();
   });
 });
 
@@ -307,4 +230,96 @@ function generateUniqueId() {
     Math.random().toString(36).substring(2, 15) +
     Math.random().toString(36).substring(2, 15)
   );
+}
+
+// Nueva función para manejar la lógica de salida de usuario
+function handleUserLeave(leavingWs, chatId, deleteChatExplicitly) {
+  if (
+    !chatId ||
+    !activeChats[chatId] ||
+    !activeChats[chatId].members[leavingWs.clientId]
+  ) {
+    console.warn(
+      `Intento de salir de chat no existente o no se era miembro: ${chatId} por ${leavingWs.clientId}`
+    );
+    return;
+  }
+
+  const chat = activeChats[chatId];
+  const leavingUsername = leavingWs.username;
+  const leavingClientId = leavingWs.clientId;
+
+  delete chat.members[leavingClientId];
+  delete leavingWs.currentChatId; // Eliminar la referencia del chat en el objeto WebSocket del cliente
+
+  console.log(
+    `Usuario ${leavingUsername} (ID: ${leavingClientId}) dejó el chat ${chatId}.`
+  );
+
+  const remainingMemberCount = Object.keys(chat.members).length;
+
+  if (remainingMemberCount === 0 && deleteChatExplicitly) {
+    // La sala se elimina solo si no quedan miembros Y el último usuario lo solicitó explícitamente.
+    console.log(`Chat ${chatId} vacío y solicitud de eliminación, eliminando.`);
+    delete activeChats[chatId];
+    // Notificar a todos los clientes que el chat ha sido eliminado
+    clients.forEach((clientSocket) => {
+      if (clientSocket.readyState === WebSocket.OPEN) {
+        clientSocket.send(
+          JSON.stringify({ type: "chat_removed", chatId: chatId })
+        );
+      }
+    });
+  } else if (remainingMemberCount > 0) {
+    // Si quedan miembros, enviarles la actualización
+    console.log(
+      `Chat ${chatId} tiene ${remainingMemberCount} miembros restantes. Actualizando...`
+    );
+    const chatName = chat.chatName;
+    for (const memberClientId in chat.members) {
+      const memberSocket = clients.get(memberClientId);
+      if (memberSocket && memberSocket.readyState === WebSocket.OPEN) {
+        memberSocket.send(
+          JSON.stringify({
+            type: "chat_members_update",
+            chatId: chatId,
+            chatName: chatName,
+            members: chat.members, // Enviar la lista actualizada
+          })
+        );
+      }
+    }
+  } else {
+    // Caso: Queda 0 miembros, pero no se solicitó la eliminación explícita.
+    // El chat permanece, pero no se notifica a nadie (porque no queda nadie).
+    // Si alguien se une después, verá la sala.
+    console.log(
+      `Chat ${chatId} ahora está vacío pero no se ha solicitado eliminarlo. Permanecerá activo.`
+    );
+  }
+
+  // Siempre enviar la lista de chats actualizada a todos los clientes después de una salida
+  sendUpdatedChatListToAllClients();
+}
+
+// Nueva función para enviar la lista de chats a todos los clientes (o a uno específico)
+function sendUpdatedChatListToAllClients(targetWs = null) {
+  const chatListToSend = Object.keys(activeChats).map((chatId) => ({
+    chatId: chatId,
+    creator: activeChats[chatId].creator,
+    chatName: activeChats[chatId].chatName,
+    memberCount: Object.keys(activeChats[chatId].members).length,
+  }));
+
+  if (targetWs) {
+    targetWs.send(JSON.stringify({ type: "chat_list", chats: chatListToSend }));
+  } else {
+    clients.forEach((clientSocket) => {
+      if (clientSocket.readyState === WebSocket.OPEN) {
+        clientSocket.send(
+          JSON.stringify({ type: "chat_list", chats: chatListToSend })
+        );
+      }
+    });
+  }
 }
