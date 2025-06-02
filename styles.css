@@ -1,7 +1,6 @@
-/* General Body Styles */
 body {
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #e0f2f7; /* Light blue background */
+  background-color: #e0f2f7;
   color: #333;
   margin: 20px;
   display: flex;
@@ -10,7 +9,6 @@ body {
   min-height: 95vh;
 }
 
-/* Main Container Styling */
 #user-setup,
 #chat-list,
 #chat-area,
@@ -24,7 +22,6 @@ body {
   max-width: 800px;
 }
 
-/* User Setup and Buttons */
 #user-setup label {
   font-weight: bold;
   margin-right: 10px;
@@ -47,7 +44,7 @@ body {
 #send-button,
 #leave-chat-button {
   padding: 12px 25px;
-  background-color: #007bff; /* Blue */
+  background-color: #007bff;
   color: white;
   border: none;
   border-radius: 5px;
@@ -68,7 +65,6 @@ body {
   margin: 20px auto;
 }
 
-/* Status Message */
 .status-message {
   padding: 10px 15px;
   margin-bottom: 15px;
@@ -82,23 +78,22 @@ body {
 }
 
 .status-message.info {
-  background-color: #17a2b8; /* Cyan */
+  background-color: #17a2b8;
 }
 
 .status-message.success {
-  background-color: #28a745; /* Green */
+  background-color: #28a745;
 }
 
 .status-message.warning {
-  background-color: #ffc107; /* Yellow */
+  background-color: #ffc107;
   color: #333;
 }
 
 .status-message.error {
-  background-color: #dc3545; /* Red */
+  background-color: #dc3545;
 }
 
-/* Chat List */
 #chat-list h2 {
   color: #007bff;
   margin-top: 0;
@@ -129,7 +124,7 @@ body {
 
 #available-chats li button {
   padding: 8px 15px;
-  background-color: #28a745; /* Green */
+  background-color: #28a745;
   color: white;
   border: none;
   border-radius: 4px;
@@ -142,7 +137,6 @@ body {
   background-color: #218838;
 }
 
-/* Chat Area and Messages */
 #chat-area h2 {
   color: #007bff;
   margin-bottom: 15px;
@@ -177,19 +171,17 @@ body {
   border-radius: 4px;
 }
 
-/* Message Input Area */
 #message-input-area {
   display: flex;
   gap: 10px;
-  padding: 0; /* Remove padding as it's already on the container */
-  margin-bottom: 0; /* Remove margin as it's already on the container */
+  padding: 0;
+  margin-bottom: 0;
 }
 
 #message-input-area input {
   flex-grow: 1;
 }
 
-/* Styles for the Members List */
 #chat-members {
   flex-basis: 25%;
   min-width: 150px;
@@ -227,24 +219,23 @@ body {
 
 #members-list li.connected {
   font-weight: bold;
-  color: #28a745; /* Verde para conectado P2P */
+  color: #28a745;
 }
 
 #members-list li.me {
   font-weight: bold;
-  color: #007bff; /* Azul para el propio usuario */
+  color: #007bff;
 }
 
-/* Estilos para el Modal */
 .modal {
   position: fixed;
-  z-index: 1000; /* Asegura que esté por encima de todo */
+  z-index: 1000;
   left: 0;
   top: 0;
   width: 100%;
   height: 100%;
   overflow: auto;
-  background-color: rgba(0, 0, 0, 0.6); /* Fondo semi-transparente más oscuro */
+  background-color: rgba(0, 0, 0, 0.6);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -259,7 +250,7 @@ body {
   border-radius: 12px;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
   text-align: center;
-  animation: fadeIn 0.3s ease-out; /* Animación de entrada */
+  animation: fadeIn 0.3s ease-out;
 }
 
 @keyframes fadeIn {
@@ -314,7 +305,7 @@ body {
 }
 
 #confirm-room-name-button {
-  background-color: #28a745; /* Verde */
+  background-color: #28a745;
   color: white;
 }
 
@@ -324,7 +315,7 @@ body {
 }
 
 #cancel-room-name-button {
-  background-color: #dc3545; /* Rojo */
+  background-color: #dc3545;
   color: white;
 }
 

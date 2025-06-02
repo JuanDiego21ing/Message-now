@@ -1,14 +1,12 @@
 // server.js
 const WebSocket = require("ws");
 
-const wss = new WebSocket.Server({ port: 8081 }); // Usamos el puerto 8081
+const wss = new WebSocket.Server({ port: 8081 });
 
 console.log("Servidor de señalización iniciado en ws://localhost:8081");
 
 const clients = new Map();
 
-// activeChats ahora almacenará también el nombre de la sala
-// { chatId: { creator: 'username', chatName: 'nombre_sala', members: { clientId: 'username', ... } }, ... }
 const activeChats = {};
 
 wss.on("connection", (ws) => {
@@ -22,11 +20,10 @@ wss.on("connection", (ws) => {
 
   ws.send(JSON.stringify({ type: "your_id", clientId: clientId }));
 
-  // Enviar la lista de chats activos al cliente recién conectado
   const chatListToSend = Object.keys(activeChats).map((chatId) => ({
     chatId: chatId,
     creator: activeChats[chatId].creator,
-    chatName: activeChats[chatId].chatName, // ¡Nuevo! Incluir el nombre de la sala
+    chatName: activeChats[chatId].chatName,
     memberCount: Object.keys(activeChats[chatId].members).length,
   }));
   ws.send(JSON.stringify({ type: "chat_list", chats: chatListToSend }));
@@ -54,8 +51,6 @@ wss.on("connection", (ws) => {
             return;
           }
 
-          // Impedir que un usuario se una si ya está en otro chat.
-          // Aunque el cliente ya tiene lógica para esto, el servidor debe ser robusto.
           if (ws.currentChatId && ws.currentChatId !== regChatId) {
             ws.send(
               JSON.stringify({
@@ -89,9 +84,7 @@ wss.on("connection", (ws) => {
               );
             }
           }
-          // Después de unirse, notificar a todos los clientes sobre el cambio de miembros en la sala
-          // (Esto ya se hace en el bucle de arriba, pero lo dejo aquí para claridad si hubiera otra lógica)
-          // Además, enviamos la lista actualizada de chats por si el número de miembros cambió.
+
           sendUpdatedChatListToAllClients();
           break;
 
@@ -108,7 +101,6 @@ wss.on("connection", (ws) => {
             return;
           }
 
-          // Impedir que un usuario cree un chat si ya está en otro.
           if (ws.currentChatId) {
             ws.send(
               JSON.stringify({
@@ -132,10 +124,8 @@ wss.on("connection", (ws) => {
             `Chat creado. ID: ${newChatId}, Nombre: "${newChatName}" por ${creatorUsername} (ID: ${clientId})`
           );
 
-          // Notificar a todos los clientes sobre el nuevo chat disponible
           sendUpdatedChatListToAllClients();
 
-          // Inmediatamente después de crear el chat, enviar una actualización de miembros al creador
           ws.send(
             JSON.stringify({
               type: "chat_members_update",
@@ -177,13 +167,13 @@ wss.on("connection", (ws) => {
 
         case "leave_chat":
           const leaveChatId = data.chatId || ws.currentChatId;
-          const willDeleteChat = data.deleteChat || false; // Nuevo: indicador para eliminar el chat
+          const willDeleteChat = data.deleteChat || false;
 
           handleUserLeave(ws, leaveChatId, willDeleteChat);
           break;
 
         case "request_chat_list":
-          sendUpdatedChatListToAllClients(ws); // Envía solo a quien lo solicita si se pasa ws
+          sendUpdatedChatListToAllClients(ws);
           break;
 
         default:
@@ -211,17 +201,13 @@ wss.on("connection", (ws) => {
     console.log(`Cliente desconectado. ID: ${ws.clientId}`);
     clients.delete(ws.clientId);
 
-    // Cuando un cliente se desconecta, tratamos su salida como una salida de chat normal,
-    // pero sin la opción de 'deleteChat' por defecto, solo limpieza si la sala se vacía.
     if (ws.currentChatId) {
-      handleUserLeave(ws, ws.currentChatId, false); // No forzamos la eliminación de la sala al desconectar
+      handleUserLeave(ws, ws.currentChatId, false);
     }
   });
 
   ws.on("error", (error) => {
     console.error("Error en la conexión WebSocket con cliente:", error);
-    // Podrías intentar cerrar la conexión si no se cierra automáticamente
-    // ws.close();
   });
 });
 
@@ -232,7 +218,6 @@ function generateUniqueId() {
   );
 }
 
-// Nueva función para manejar la lógica de salida de usuario
 function handleUserLeave(leavingWs, chatId, deleteChatExplicitly) {
   if (
     !chatId ||
@@ -250,7 +235,7 @@ function handleUserLeave(leavingWs, chatId, deleteChatExplicitly) {
   const leavingClientId = leavingWs.clientId;
 
   delete chat.members[leavingClientId];
-  delete leavingWs.currentChatId; // Eliminar la referencia del chat en el objeto WebSocket del cliente
+  delete leavingWs.currentChatId;
 
   console.log(
     `Usuario ${leavingUsername} (ID: ${leavingClientId}) dejó el chat ${chatId}.`
@@ -259,10 +244,9 @@ function handleUserLeave(leavingWs, chatId, deleteChatExplicitly) {
   const remainingMemberCount = Object.keys(chat.members).length;
 
   if (remainingMemberCount === 0 && deleteChatExplicitly) {
-    // La sala se elimina solo si no quedan miembros Y el último usuario lo solicitó explícitamente.
     console.log(`Chat ${chatId} vacío y solicitud de eliminación, eliminando.`);
     delete activeChats[chatId];
-    // Notificar a todos los clientes que el chat ha sido eliminado
+
     clients.forEach((clientSocket) => {
       if (clientSocket.readyState === WebSocket.OPEN) {
         clientSocket.send(
@@ -271,7 +255,6 @@ function handleUserLeave(leavingWs, chatId, deleteChatExplicitly) {
       }
     });
   } else if (remainingMemberCount > 0) {
-    // Si quedan miembros, enviarles la actualización
     console.log(
       `Chat ${chatId} tiene ${remainingMemberCount} miembros restantes. Actualizando...`
     );
@@ -284,25 +267,20 @@ function handleUserLeave(leavingWs, chatId, deleteChatExplicitly) {
             type: "chat_members_update",
             chatId: chatId,
             chatName: chatName,
-            members: chat.members, // Enviar la lista actualizada
+            members: chat.members,
           })
         );
       }
     }
   } else {
-    // Caso: Queda 0 miembros, pero no se solicitó la eliminación explícita.
-    // El chat permanece, pero no se notifica a nadie (porque no queda nadie).
-    // Si alguien se une después, verá la sala.
     console.log(
       `Chat ${chatId} ahora está vacío pero no se ha solicitado eliminarlo. Permanecerá activo.`
     );
   }
 
-  // Siempre enviar la lista de chats actualizada a todos los clientes después de una salida
   sendUpdatedChatListToAllClients();
 }
 
-// Nueva función para enviar la lista de chats a todos los clientes (o a uno específico)
 function sendUpdatedChatListToAllClients(targetWs = null) {
   const chatListToSend = Object.keys(activeChats).map((chatId) => ({
     chatId: chatId,
