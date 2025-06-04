@@ -1,26 +1,231 @@
 // js/app.js
-import * as State from './state.js';
-import * as UIElements from './uiElements.js';
-import { setStatusMessage, displayMessage, showLobbyUI, hideInitialUI, clearStatusMessage } from './uiHelpers.js'; // updateMembersList no se usa directamente aquí
-import { connectToSignalingServer } from './signaling.js'; // setIsJoiningOrCreatingChat no se usa directamente aquí
-import { initModalEventHandlers } from './modalHandlers.js';
-import { sendMessageToPeers } from './webrtc.js';
+import * as State from "./state.js";
+import * as UIElements from "./uiElements.js";
+import {
+  setStatusMessage,
+  displayMessage,
+  showLobbyUI,
+  hideInitialUI,
+  updateMembersList,
+  clearStatusMessage,
+} from "./uiHelpers.js";
+import {
+  connectToSignalingServer,
+  setIsJoiningOrCreatingChat,
+} from "./signaling.js";
+import { initModalEventHandlers } from "./modalHandlers.js";
+import { sendMessageToPeers } from "./webrtc.js";
 
-function initializeApp() {
-  hideInitialUI();
-  initModalEventHandlers();
+// Función para mostrar el área de autenticación y ocultar la app principal
+function showAuthUI() {
+  UIElements.authAreaDiv.style.display = "block";
+  UIElements.mainAppAreaDiv.style.display = "none";
+  UIElements.loginFormContainer.style.display = "block"; // Mostrar login por defecto
+  UIElements.registerFormContainer.style.display = "none";
+  hideChatElements();
+}
 
-  UIElements.setUsernameButton.addEventListener("click", () => {
-    const name = UIElements.usernameInput.value.trim();
-    if (name && name.length >= 3 && name.length <= 20 && name.toLowerCase() !== "sistema" && name.toLowerCase() !== "yo") {
-      State.setUsername(name);
-      UIElements.userSetupDiv.style.display = "none";
+// Función para mostrar la app principal (lobby/chat) y ocultar autenticación
+function showMainAppUI() {
+  UIElements.authAreaDiv.style.display = "none";
+  UIElements.mainAppAreaDiv.style.display = "block";
+  UIElements.authenticatedUsernameDisplay.textContent =
+    State.getUsername() || "N/A";
+  UIElements.createChatButton.style.display = "block";
+  UIElements.chatListDiv.style.display = "block";
+  UIElements.availableChatsList.innerHTML =
+    "<li>Conectando y cargando chats...</li>";
+}
+
+function hideChatElements() {
+  if (UIElements.chatAreaDiv) UIElements.chatAreaDiv.style.display = "none";
+  if (UIElements.messageInputAreaDiv)
+    UIElements.messageInputAreaDiv.style.display = "none";
+  // Dejamos chatListDiv y createChatButton visibles si mainAppArea es visible
+  // if (UIElements.chatListDiv) UIElements.chatListDiv.style.display = "none";
+  // if (UIElements.createChatButton) UIElements.createChatButton.style.display = "none";
+  if (UIElements.leaveChatButton)
+    UIElements.leaveChatButton.style.display = "none";
+}
+
+async function handleRegistration(event) {
+  event.preventDefault();
+  const username = UIElements.registerUsernameInput.value.trim();
+  const password = UIElements.registerPasswordInput.value.trim();
+
+  if (!username || !password) {
+    setStatusMessage(
+      "Todos los campos son obligatorios para registrarse.",
+      "warning"
+    );
+    return;
+  }
+  if (password.length < 6) {
+    setStatusMessage(
+      "La contraseña debe tener al menos 6 caracteres.",
+      "warning"
+    );
+    return;
+  }
+
+  try {
+    setStatusMessage("Registrando...", "info");
+    const response = await fetch("http://localhost:8081/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      setStatusMessage(
+        data.message || "Registro exitoso. Ahora puedes iniciar sesión.",
+        "success"
+      );
+      UIElements.registerFormContainer.style.display = "none";
+      UIElements.loginFormContainer.style.display = "block";
+      UIElements.registerForm.reset();
+    } else {
+      setStatusMessage(data.message || "Error en el registro.", "error");
+    }
+  } catch (error) {
+    console.error("Error en fetch /register:", error);
+    setStatusMessage("Error de red al intentar registrar.", "error");
+  }
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const username = UIElements.loginUsernameInput.value.trim();
+  const password = UIElements.loginPasswordInput.value.trim();
+
+  if (!username || !password) {
+    setStatusMessage("Usuario y contraseña son obligatorios.", "warning");
+    return;
+  }
+
+  try {
+    setStatusMessage("Iniciando sesión...", "info");
+    const response = await fetch("http://localhost:8081/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    // No intentes parsear response.json() si la respuesta no fue ok y no esperas JSON
+    if (!response.ok) {
+      // Intenta obtener el mensaje de error si es JSON, sino usa un mensaje genérico
+      let errorMsg = `Error en inicio de sesión (HTTP ${response.status})`;
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.message || errorMsg;
+      } catch (e) {
+        // No era JSON, o hubo otro error al parsearlo
+        console.warn(
+          "La respuesta de error del login no era JSON:",
+          await response.text()
+        );
+      }
+      setStatusMessage(errorMsg, "error");
+      State.clearAuthenticatedUser();
+      return; // Salir temprano si la respuesta no es OK
+    }
+
+    const data = await response.json(); // { message, token, username, userId }
+
+    // Esta comprobación es redundante si ya verificamos response.ok, pero es una doble seguridad
+    if (data.token) {
+      State.setAuthenticatedUser(data.username, data.userId, data.token);
+
+      // ---- VERIFICA ESTOS LOGS ----
+      console.log(
+        "LOGIN SUCCESS (app.js): State.username set to:",
+        State.getUsername()
+      );
+      console.log(
+        "LOGIN SUCCESS (app.js): State.userId set to:",
+        State.getUserId()
+      );
+      console.log(
+        "LOGIN SUCCESS (app.js): State.authToken set:",
+        State.getAuthToken() ? "Yes, token present" : "No, token MISSING!"
+      );
+      // ---- FIN DE VERIFICACIÓN ----
+
+      setStatusMessage(data.message || "Inicio de sesión exitoso.", "success");
+      UIElements.loginForm.reset();
+      showMainAppUI();
       connectToSignalingServer();
     } else {
-      setStatusMessage("Por favor, ingresa un nombre válido (3-20 caracteres, no 'Sistema' o 'Yo').", "error");
-      UIElements.usernameInput.value = "";
+      // Esto no debería ocurrir si response.ok es true y el servidor envía token.
+      // Podría ser una respuesta 200 pero sin token, lo cual sería un error de lógica del servidor.
+      setStatusMessage(
+        data.message || "Error en inicio de sesión: no se recibió token.",
+        "error"
+      );
+      State.clearAuthenticatedUser();
     }
+  } catch (error) {
+    console.error("Error en fetch /login o al procesar la respuesta:", error);
+    // El error que viste ("SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input")
+    // ocurre si la respuesta del servidor NO es JSON válido (ej. un error HTML 405 plano, o una respuesta vacía).
+    // El bloque if (!response.ok) de arriba intenta manejar esto de forma más controlada.
+    setStatusMessage(
+      "Error de red o respuesta inesperada al intentar iniciar sesión.",
+      "error"
+    );
+    State.clearAuthenticatedUser();
+  }
+}
+
+function handleLogout() {
+  setStatusMessage("Cerrando sesión...", "info");
+  const signalingSocket = State.getSignalingSocket();
+  if (
+    signalingSocket &&
+    (signalingSocket.readyState === WebSocket.OPEN ||
+      signalingSocket.readyState === WebSocket.CONNECTING)
+  ) {
+    signalingSocket.close(1000, "Logout by user");
+  }
+  State.clearAuthenticatedUser();
+  State.resetCurrentChatState();
+  showAuthUI();
+  UIElements.availableChatsList.innerHTML = "";
+  UIElements.messagesDiv.innerHTML = "";
+  UIElements.membersList.innerHTML = "";
+  setStatusMessage("Sesión cerrada.", "success");
+}
+
+function initializeApp() {
+  UIElements.loginForm.addEventListener("submit", handleLogin);
+  UIElements.registerForm.addEventListener("submit", handleRegistration);
+  UIElements.logoutButton.addEventListener("click", handleLogout);
+
+  UIElements.showRegisterLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    UIElements.loginFormContainer.style.display = "none";
+    UIElements.registerFormContainer.style.display = "block";
+    clearStatusMessage();
   });
+
+  UIElements.showLoginLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    UIElements.registerFormContainer.style.display = "none";
+    UIElements.loginFormContainer.style.display = "block";
+    clearStatusMessage();
+  });
+
+  if (State.loadStateFromStorage() && State.getAuthToken()) {
+    setStatusMessage(
+      `Bienvenido de nuevo, ${State.getUsername()}! Conectando...`,
+      "info"
+    );
+    showMainAppUI();
+    connectToSignalingServer();
+  } else {
+    showAuthUI();
+  }
+
+  initModalEventHandlers();
 
   UIElements.sendButton.addEventListener("click", () => {
     const messageText = UIElements.messageInput.value.trim();
@@ -43,26 +248,33 @@ function initializeApp() {
 
   if (UIElements.leaveChatButton) {
     UIElements.leaveChatButton.addEventListener("click", () => {
-        const currentChatId = State.getCurrentChatId();
-        const signalingSocket = State.getSignalingSocket();
+      const currentChatId = State.getCurrentChatId();
+      const signalingSocket = State.getSignalingSocket();
 
-        if (!currentChatId || !signalingSocket || signalingSocket.readyState !== WebSocket.OPEN) {
-            setStatusMessage("No estás actualmente en un chat activo o conectado para salir.", "warning");
-            State.resetCurrentChatState();
-            showLobbyUI(true); // Actualizar lista al forzar ir al lobby
-            return;
-        }
+      if (
+        !currentChatId ||
+        !signalingSocket ||
+        signalingSocket.readyState !== WebSocket.OPEN
+      ) {
+        setStatusMessage(
+          "No estás actualmente en un chat activo o conectado para salir.",
+          "warning"
+        );
+        State.resetCurrentChatState();
+        showLobbyUI(true);
+        return;
+      }
 
-        const memberCount = Object.keys(State.getCurrentChatMembers()).length;
-        const myClientId = State.getClientId();
+      const memberCount = Object.keys(State.getCurrentChatMembers()).length;
+      const myConnId = State.getClientId();
 
-        if (memberCount === 1 && State.getCurrentChatMembers()[myClientId]) {
-            UIElements.confirmLeaveMessage.textContent =
-            "¡Atención! Eres el único usuario en esta sala. Si sales, la sala se eliminara para siempre. ¿Deseas salir?"; // Ajuste de mensaje
-            UIElements.confirmLeaveModal.style.display = "flex";
-        } else {
-            performLeaveChat(false); 
-        }
+      if (memberCount === 1 && State.getCurrentChatMembers()[myConnId]) {
+        UIElements.confirmLeaveMessage.textContent =
+          "¡Atención! Eres el único usuario en esta sala. Si sales, la sala podría borrarse. ¿Deseas salir?";
+        UIElements.confirmLeaveModal.style.display = "flex";
+      } else {
+        performLeaveChat(false);
+      }
     });
   }
 }
@@ -70,23 +282,24 @@ function initializeApp() {
 export function performLeaveChat(requestDeleteChat) {
   const currentChatId = State.getCurrentChatId();
   const signalingSocket = State.getSignalingSocket();
-  const clientId = State.getClientId();
 
-  if (currentChatId && signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
-    console.log(`Enviando leave_chat para ${currentChatId}. Solicitar borrado: ${requestDeleteChat}`);
+  if (
+    currentChatId &&
+    signalingSocket &&
+    signalingSocket.readyState === WebSocket.OPEN
+  ) {
+    console.log(
+      `Enviando leave_chat para ${currentChatId}. Solicitar borrado: ${requestDeleteChat}`
+    );
     signalingSocket.send(
       JSON.stringify({
         type: "leave_chat",
         chatId: currentChatId,
-        clientId: clientId, 
         deleteChat: requestDeleteChat,
       })
     );
-
-    // No mostrar mensaje de "Has salido" aquí, esperar a que el servidor confirme o la UI cambie
-    // displayMessage("Sistema", "Has salido del chat.", false); // Movido o implícito por cambio de UI
     State.resetCurrentChatState();
-    showLobbyUI(true); // Vuelve al lobby y solicita lista actualizada
+    showLobbyUI(true);
 
     if (requestDeleteChat) {
       setStatusMessage("Has salido y solicitado eliminar la sala.", "success");
@@ -94,9 +307,12 @@ export function performLeaveChat(requestDeleteChat) {
       setStatusMessage("Has salido del chat.", "success");
     }
   } else {
-    setStatusMessage("Error al intentar salir del chat. No conectado o sin chat activo.", "error");
+    setStatusMessage(
+      "Error al intentar salir del chat. No conectado o sin chat activo.",
+      "error"
+    );
     State.resetCurrentChatState();
-    showLobbyUI(true); // Actualizar lista al forzar ir al lobby
+    showLobbyUI(true);
   }
 }
 

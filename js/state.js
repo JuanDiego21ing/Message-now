@@ -1,26 +1,116 @@
+// js/state.js
 export let username = null;
-export let clientId = null;
+export let userId = null;
+export let authToken = null;
+export let clientId = null; // ID de conexión WebSocket
 export let signalingSocket = null;
 export const activePeers = new Map();
 export let currentChatId = null;
 export let currentChatName = null;
-export let currentChatMembers = {}; // { clientId: username }
+export let currentChatMembers = {};
 
-export const SIGNALING_SERVER_URL = "ws://localhost:8081";
+export const SIGNALING_SERVER_URL = "ws://localhost:8081"; // ¡O tu IP local si pruebas en red!
 export const RECONNECT_INTERVAL = 5000;
 
-export function setUsername(name) {
-  username = name;
+export function setAuthenticatedUser(authUsername, authUserId, token) {
+  // ---- LOG AÑADIDO ----
+  console.log(
+    "STATE.JS: setAuthenticatedUser INVOCADO con -> Username:",
+    authUsername,
+    "| UserID:",
+    authUserId,
+    "| Token Presente:",
+    token ? "Sí" : "No"
+  );
+  username = authUsername;
+  userId = authUserId;
+  authToken = token;
+  if (token) {
+    try {
+      localStorage.setItem("authToken", token);
+      localStorage.setItem("username", authUsername);
+      localStorage.setItem("userId", authUserId);
+      // ---- LOG AÑADIDO ----
+      console.log(
+        "STATE.JS: Token y datos de usuario GUARDADOS en localStorage."
+      );
+    } catch (e) {
+      console.error("STATE.JS: Error al GUARDAR en localStorage:", e);
+    }
+  } else {
+    try {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("username");
+      localStorage.removeItem("userId");
+      // ---- LOG AÑADIDO ----
+      console.log(
+        "STATE.JS: Token y datos de usuario ELIMINADOS de localStorage."
+      );
+    } catch (e) {
+      console.error("STATE.JS: Error al ELIMINAR de localStorage:", e);
+    }
+  }
 }
+
 export function getUsername() {
+  // console.log("STATE.JS: getUsername llamado, devuelve:", username); // Activar si es muy necesario, puede ser ruidoso
   return username;
 }
+export function getUserId() {
+  return userId;
+}
+export function getAuthToken() {
+  // console.log("STATE.JS: getAuthToken llamado, devuelve token presente:", authToken ? "Sí" : "No"); // Activar si es necesario
+  return authToken;
+}
+
+export function loadStateFromStorage() {
+  // ---- LOG AÑADIDO ----
+  console.log("STATE.JS: loadStateFromStorage INVOCADO.");
+  const storedToken = localStorage.getItem("authToken");
+  const storedUsername = localStorage.getItem("username");
+  const storedUserId = localStorage.getItem("userId");
+  // ---- LOG AÑADIDO ----
+  console.log(
+    "STATE.JS: Leyendo de localStorage -> Token:",
+    storedToken ? "Sí" : "No",
+    "| Username:",
+    storedUsername,
+    "| UserID:",
+    storedUserId
+  );
+
+  if (storedToken && storedUsername && storedUserId) {
+    authToken = storedToken;
+    username = storedUsername;
+    userId = storedUserId;
+    // ---- LOG AÑADIDO ----
+    console.log(
+      "STATE.JS: Estado RESTAURADO desde localStorage. Username actual en variable:",
+      username
+    );
+    return true; // Hay sesión activa
+  }
+  // ---- LOG AÑADIDO ----
+  console.log(
+    "STATE.JS: No se encontró sesión completa en localStorage para restaurar."
+  );
+  return false; // No hay sesión activa
+}
+
+export function clearAuthenticatedUser() {
+  // ---- LOG AÑADIDO ----
+  console.log("STATE.JS: clearAuthenticatedUser INVOCADO.");
+  setAuthenticatedUser(null, null, null); // Esto llamará a la lógica de eliminación de localStorage también
+}
+
 export function setClientId(id) {
   clientId = id;
 }
 export function getClientId() {
   return clientId;
 }
+
 export function setSignalingSocket(socket) {
   signalingSocket = socket;
 }
@@ -66,6 +156,8 @@ export function clearActivePeers() {
   activePeers.clear();
 }
 export function resetCurrentChatState() {
+  // ---- LOG AÑADIDO ----
+  console.log("STATE.JS: resetCurrentChatState INVOCADO.");
   currentChatId = null;
   currentChatName = null;
   currentChatMembers = {};

@@ -1,3 +1,4 @@
+// js/chatList.js
 import * as UIElements from "./uiElements.js";
 import * as State from "./state.js";
 import { setStatusMessage, showChatUI, displayMessage } from "./uiHelpers.js";
@@ -21,7 +22,6 @@ export function updateAvailableChats(chats) {
 }
 
 export function addChatToList(chat) {
-  // Check if chat ID is valid
   if (!chat || !chat.chatId) {
     console.warn("Intento de añadir chat inválido a la lista:", chat);
     return;
@@ -29,7 +29,6 @@ export function addChatToList(chat) {
 
   const existingListItem = document.getElementById(`chat-${chat.chatId}`);
   if (existingListItem) {
-    // Update existing chat item
     const nameStrong = existingListItem.querySelector("strong");
     if (nameStrong) {
       nameStrong.textContent =
@@ -43,7 +42,6 @@ export function addChatToList(chat) {
     if (memberCountSpan) {
       memberCountSpan.textContent = chat.memberCount;
     }
-    // Update data-chatname on button if it changed
     const joinButton = existingListItem.querySelector("button");
     if (joinButton) {
       joinButton.dataset.chatname = chat.chatName || "";
@@ -90,13 +88,28 @@ export function removeChatFromList(chatId) {
 }
 
 export function requestJoinChat(chatId, chatName) {
-  const username = State.getUsername();
+  // ---- LOG AÑADIDO PARA DEPURACIÓN ----
+  console.log(
+    "REQUEST JOIN CHAT (chatList.js): State.username is:",
+    State.getUsername()
+  );
+  console.log(
+    "REQUEST JOIN CHAT (chatList.js): State.getAuthToken is present:",
+    State.getAuthToken() ? "Yes" : "No"
+  );
+  // ---- FIN DE LOGS ----
+
+  const username = State.getUsername(); // Obtiene el username del usuario autenticado
   const currentChatId = State.getCurrentChatId();
   const signalingSocket = State.getSignalingSocket();
-  const clientId = State.getClientId();
+  const clientId = State.getClientId(); // Este es el connId del WebSocket
 
   if (!username) {
-    setStatusMessage("Por favor, ingresa tu nombre primero.", "error");
+    // Esta verificación ahora se basa en el usuario autenticado
+    setStatusMessage(
+      "Debes estar autenticado para unirte a un chat. Por favor, inicia sesión.", // Mensaje actualizado
+      "error"
+    );
     return;
   }
   if (currentChatId) {
@@ -114,7 +127,7 @@ export function requestJoinChat(chatId, chatName) {
     return;
   }
 
-  setIsJoiningOrCreatingChat(true); // Indicar que estamos intentando unirnos
+  setIsJoiningOrCreatingChat(true);
   State.setCurrentChatId(chatId);
   State.setCurrentChatName(chatName);
 
@@ -127,8 +140,10 @@ export function requestJoinChat(chatId, chatName) {
     JSON.stringify({
       type: "register_user",
       chatId: chatId,
+      // El servidor ya toma el username y el connId (equivalente a este clientId) del objeto 'ws' autenticado
+      // por el token, así que enviar estos desde el cliente es redundante pero no dañino si el servidor los ignora.
       username: username,
-      clientId: clientId, // El servidor usa ws.clientId pero enviarlo no hace daño
+      clientId: clientId,
     })
   );
 

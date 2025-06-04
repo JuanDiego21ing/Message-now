@@ -5,30 +5,38 @@ import {
   displayMessage,
   setStatusMessage,
   updateMembersList,
-} from "./uiHelpers.js";
+  // clearStatusMessage, // Esta importación estaba en tu uiHelpers.js, la añado aquí por si createPeer la usa
+} from "./uiHelpers.js"; // Asegúrate que clearStatusMessage esté exportada en uiHelpers si la usas
+
+// En la versión de uiHelpers.js que revisamos, clearStatusMessage sí está exportada.
+// Sin embargo, en createPeer, el clearStatusMessage() que estaba en peer.on('connect') fue eliminado
+// en una versión anterior que te pasé. Si lo necesitas, asegúrate que esté la importación.
+// Por ahora, lo comentaré aquí si no se usa explícitamente.
 
 export function createPeer(remoteClientId, remoteUsername, initiator) {
+  // remoteClientId aquí es el connId del otro usuario.
+  // remoteUsername es el username autenticado del otro usuario.
   console.log(
-    `Creando peer con ${remoteUsername} (ID: ${remoteClientId}). Iniciador: ${initiator}`
+    `Creando peer con ${remoteUsername} (ID de conexión: ${remoteClientId}). Iniciador: ${initiator}` // Aclarado ID de conexión
   );
   setStatusMessage(`Conectando con ${remoteUsername}...`, "info");
 
   const peer = new SimplePeer({ initiator: initiator, trickle: false });
 
   peer.remoteUsername = remoteUsername;
-  peer.remoteClientId = remoteClientId; // Almacenamos para referencia
+  peer.remoteClientId = remoteClientId; // Almacenamos el connId remoto
 
   peer.on("signal", (data) => {
     console.log(
-      `Enviando señal P2P a ${remoteUsername} (ID: ${remoteClientId}). Tipo: ${data.type}`
+      `Enviando señal P2P a ${remoteUsername} (ConnID: ${remoteClientId}). Tipo: ${data.type}`
     );
     const signalingSocket = State.getSignalingSocket();
     if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
       signalingSocket.send(
         JSON.stringify({
           type: "signal",
-          receiverId: remoteClientId,
-          senderId: State.getClientId(), // El servidor usará su ws.clientId, pero esto es para info
+          receiverId: remoteClientId, // Este es el connId del destinatario
+          senderId: State.getClientId(), // Este es el connId local
           signal: data,
           chatId: State.getCurrentChatId(),
         })
@@ -44,20 +52,25 @@ export function createPeer(remoteClientId, remoteUsername, initiator) {
 
   peer.on("connect", () => {
     console.log(
-      `¡CONECTADO P2P con ${peer.remoteUsername} (ID: ${peer.remoteClientId})!`
+      `¡CONECTADO P2P con ${peer.remoteUsername} (ConnID: ${peer.remoteClientId})!`
     );
     displayMessage(
       "Sistema",
       `${peer.remoteUsername} se ha conectado vía P2P.`,
       false
     );
-    updateMembersList(); // Actualiza para mostrar estado "Conectado"
-    clearStatusMessage(); // Limpia "Conectando con X..."
+    updateMembersList();
+    // clearStatusMessage(); // Si quieres limpiar el "Conectando con...", asegúrate que uiHelpers la exporte y la importes aquí.
+    // En la última versión de uiHelpers.js, sí está.
+    // Y en la última versión de webrtc.js que te pasé, esta línea SÍ estaba. La restauro.
+    if (typeof clearStatusMessage === "function") clearStatusMessage();
+    else console.warn("clearStatusMessage no es una función importada");
   });
 
   peer.on("data", (data) => {
     try {
       const message = JSON.parse(data.toString());
+      // El message.sender aquí será el State.getUsername() del emisor en el momento del envío P2P
       if (
         message &&
         typeof message.sender === "string" &&
@@ -79,135 +92,146 @@ export function createPeer(remoteClientId, remoteUsername, initiator) {
 
   peer.on("close", () => {
     console.log(
-      `Conexión P2P con ${peer.remoteUsername} (ID: ${peer.remoteClientId}) cerrada.`
+      `Conexión P2P con ${peer.remoteUsername} (ConnID: ${peer.remoteClientId}) cerrada.`
     );
     displayMessage(
       "Sistema",
       `${peer.remoteUsername} se ha desconectado P2P.`,
       false
     );
-    State.removeActivePeer(peer.remoteClientId);
-    updateMembersList(); // Actualizar la lista de miembros
+    State.removeActivePeer(peer.remoteClientId); // Usa el connId para eliminar
+    updateMembersList();
     console.log(`Peers activos restantes: ${State.getActivePeers().size}`);
   });
 
   peer.on("error", (err) => {
     console.error(
-      `Error del Peer WebRTC con ${peer.remoteUsername} (ID: ${peer.remoteClientId}):`,
+      `Error del Peer WebRTC con ${peer.remoteUsername} (ConnID: ${peer.remoteClientId}):`,
       err.message || err
     );
-    // setStatusMessage(`Error de conexión P2P con ${peer.remoteUsername}: ${err.message || err.code}.`, "error");
-    // El mensaje anterior puede ser muy técnico.
     displayMessage(
       "Sistema",
-      `Problema de conexión con ${peer.remoteUsername}. Intentando reconectar si es necesario.`,
+      `Problema de conexión con ${peer.remoteUsername}.`, // Simplificado
       false
     );
-
-    // No destruir el peer inmediatamente aquí si SimplePeer intenta reconectar.
-    // Pero si el error es fatal, sí. Para 'iceConnectionFailed', SimplePeer puede intentar reconectar.
-    // Si el error es por ejemplo 'err-negotiation', sí podría ser necesario destruir.
     if (
       err.code !== "ERR_CONNECTION_FAILURE" &&
-      err.code !== "ERR_ICE_CONNECTION_FAILURE"
+      err.code !== "ERR_ICE_CONNECTION_FAILURE" // Estos errores a veces son manejados por SimplePeer con reintentos
     ) {
       if (peer && !peer.destroyed) peer.destroy();
     }
-    State.removeActivePeer(remoteClientId); // Asegurarse de quitarlo del mapa si se destruye
+    State.removeActivePeer(remoteClientId); // Usa connId para eliminar
     updateMembersList();
   });
 
-  State.addActivePeer(remoteClientId, peer);
+  State.addActivePeer(remoteClientId, peer); // Usa connId como clave
   return peer;
 }
 
 export function handleChatMembersUpdate(newMembers) {
-  const myClientId = State.getClientId();
-  const currentActivePeers = State.getActivePeers();
+  // newMembers es un objeto { connId1: username1, connId2: username2, ... }
+  const myConnId = State.getClientId(); // Mi propio connId
+  const currentActivePeers = State.getActivePeers(); // Mapa de { connId: peerObject }
 
-  // Destruir peers para miembros que ya no están en la lista del servidor
-  currentActivePeers.forEach((peerInstance, peerClientId) => {
-    if (!newMembers[peerClientId]) {
-      // Si el peer activo ya no está en la lista de miembros del chat
+  // Destruir peers para miembros (connId) que ya no están en la lista del servidor
+  currentActivePeers.forEach((peerInstance, peerConnId) => {
+    if (!newMembers[peerConnId]) {
       console.log(
-        `Miembro ${peerInstance.remoteUsername} (ID: ${peerClientId}) ya no está en el chat (según servidor). Cerrando conexión P2P.`
+        `Miembro ${peerInstance.remoteUsername} (ConnID: ${peerConnId}) ya no está en el chat. Cerrando conexión P2P.`
       );
       if (peerInstance && !peerInstance.destroyed) {
-        peerInstance.destroy(); // Esto activará el 'close' y lo eliminará de activePeers
+        peerInstance.destroy();
       } else {
-        State.removeActivePeer(peerClientId); // Si ya estaba destruido, solo quitarlo del mapa
+        State.removeActivePeer(peerConnId);
       }
     }
   });
 
   // Crear/iniciar conexiones P2P con nuevos miembros
-  for (const remoteClientId in newMembers) {
+  for (const remoteConnId in newMembers) {
     if (
-      remoteClientId !== myClientId &&
-      !currentActivePeers.has(remoteClientId)
+      remoteConnId !== myConnId && // No conectarse a uno mismo
+      !currentActivePeers.has(remoteConnId) // Solo si no tenemos ya un peer activo con este connId
     ) {
-      const remoteUsername = newMembers[remoteClientId];
-      // Determinar quién es el iniciador de forma consistente (evita glare)
-      const initiator = myClientId < remoteClientId;
+      const remoteUsername = newMembers[remoteConnId]; // Username autenticado del miembro remoto
+      const initiator = myConnId < remoteConnId; // Determinación del iniciador basada en connIds
       console.log(
-        `Necesitamos conectar con ${remoteUsername} (ID: ${remoteClientId}). Iniciador: ${initiator}`
+        `Necesitamos conectar con ${remoteUsername} (ConnID: ${remoteConnId}). Iniciador: ${initiator}`
       );
-      createPeer(remoteClientId, remoteUsername, initiator);
+      createPeer(remoteConnId, remoteUsername, initiator);
     }
   }
-  updateMembersList(); // Actualizar la lista de miembros en la UI con los nuevos estados
+  updateMembersList();
 }
 
 export function sendMessageToPeers(messageText) {
-  const sender = State.getUsername() || "Anónimo";
-  const messageToSend = JSON.stringify({ sender: sender, text: messageText });
-  const currentChatMembers = State.getCurrentChatMembers();
-  const myClientId = State.getClientId();
-  const activePeers = State.getActivePeers();
+  const senderUsername = State.getUsername(); // Username autenticado del remitente
+  if (!senderUsername) {
+    console.error(
+      "sendMessageToPeers: No hay un usuario autenticado para enviar el mensaje."
+    );
+    setStatusMessage(
+      "Error: Debes estar logueado para enviar mensajes.",
+      "error"
+    );
+    return false;
+  }
+  const messageToSend = JSON.stringify({
+    sender: senderUsername,
+    text: messageText,
+  });
+  const currentChatMembers = State.getCurrentChatMembers(); // { connId: username, ... }
+  const myConnId = State.getClientId(); // Mi connId
+  const activePeers = State.getActivePeers(); // { connId: peerObject, ... }
 
   let sentToAtLeastOnePeer = false;
   activePeers.forEach((peerInstance) => {
-    if (peerInstance.connected) {
+    // peerInstance.remoteClientId es el connId del peer remoto
+    if (
+      peerInstance.connected &&
+      currentChatMembers[peerInstance.remoteClientId]
+    ) {
+      // Asegurarse que el peer sigue en la lista de miembros del chat
       try {
         peerInstance.send(messageToSend);
         sentToAtLeastOnePeer = true;
       } catch (error) {
         console.error(
-          `Error enviando mensaje P2P a ${peerInstance.remoteUsername}:`,
+          `Error enviando mensaje P2P a ${peerInstance.remoteUsername} (ConnID: ${peerInstance.remoteClientId}):`,
           error
         );
-        // setStatusMessage(`Error enviando mensaje a ${peerInstance.remoteUsername}.`, "error");
       }
     } else {
       console.warn(
-        `Intento de enviar mensaje a peer no conectado: ${peerInstance.remoteUsername}`
+        `Intento de enviar mensaje a peer no conectado o ya no en el chat: ${peerInstance.remoteUsername}`
       );
     }
   });
 
   if (sentToAtLeastOnePeer) {
-    displayMessage(sender, messageText, true); // Muestra tu propio mensaje
+    displayMessage(senderUsername, messageText, true);
     return true;
   } else {
-    // Si no hay peers conectados pero eres el único en el chat (según el estado), aún muestra tu mensaje
+    // Si soy el único miembro listado en el chat (según currentChatMembers)
     if (
       Object.keys(currentChatMembers).length === 1 &&
-      currentChatMembers[myClientId]
+      currentChatMembers[myConnId]
     ) {
-      displayMessage(sender, messageText, true); // Muestra localmente
+      displayMessage(senderUsername, messageText, true);
       setStatusMessage(
         "Eres el único en este chat. El mensaje no se envió a nadie más.",
         "info"
       );
-      return true; // Consideramos que el mensaje se "envió" localmente
+      return true;
     }
-    // Si hay otros miembros esperados pero no peers conectados
+    // Si hay otros miembros esperados pero no peers P2P conectados
     if (Object.keys(currentChatMembers).length > 1) {
       setStatusMessage(
         "No hay nadie conectado vía P2P para enviar el mensaje.",
         "warning"
       );
     } else {
+      // Si currentChatMembers está vacío o solo yo pero algo falló en la condición anterior
       setStatusMessage(
         "No se pudo enviar el mensaje. Nadie conectado.",
         "error"

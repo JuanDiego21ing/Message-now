@@ -3,54 +3,102 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chat Distribuido P2P</title>
+    <title>Chat Distribuido P2P Autenticado</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
   </head>
   <body>
-    <div id="user-setup">
-      <label for="username">Tu nombre:</label>
-      <input type="text" id="username" placeholder="Ingresa tu nombre" />
-      <button id="set-username">Guardar Nombre</button>
+    <div id="auth-area">
+      <div id="login-form-container">
+        <h2>Iniciar Sesión</h2>
+        <form id="login-form">
+          <div>
+            <label for="login-username">Usuario:</label>
+            <input type="text" id="login-username" required />
+          </div>
+          <div>
+            <label for="login-password">Contraseña:</label>
+            <input type="password" id="login-password" required />
+          </div>
+          <button type="submit">Entrar</button>
+        </form>
+        <p>
+          ¿No tienes cuenta?
+          <a href="#" id="show-register-link">Regístrate aquí</a>
+        </p>
+      </div>
+
+      <div id="register-form-container" style="display: none">
+        <h2>Registrarse</h2>
+        <form id="register-form">
+          <div>
+            <label for="register-username">Usuario:</label>
+            <input type="text" id="register-username" required minlength="3" />
+          </div>
+          <div>
+            <label for="register-password">Contraseña:</label>
+            <input
+              type="password"
+              id="register-password"
+              required
+              minlength="6"
+            />
+          </div>
+          <button type="submit">Registrar</button>
+        </form>
+        <p>
+          ¿Ya tienes cuenta?
+          <a href="#" id="show-login-link">Inicia sesión aquí</a>
+        </p>
+      </div>
     </div>
 
     <div id="status-message" class="status-message" style="display: none"></div>
 
-    <div style="margin-top: 20px">
-      <button id="create-chat" style="display: none">Crear Nuevo Chat</button>
-      <div id="chat-list" style="margin-top: 20px; display: none">
+    <div id="main-app-area" style="display: none">
+      <div style="margin-top: 10px; margin-bottom: 10px">
+        Conectado como: <strong id="authenticated-username-display">N/A</strong>
+        <button id="logout-button" style="margin-left: 10px">
+          Cerrar Sesión
+        </button>
+      </div>
+      <button id="create-chat">Crear Nuevo Chat</button>
+      <div id="chat-list" style="margin-top: 20px">
         <h2>Chats Disponibles</h2>
         <ul id="available-chats">
-          <li>Conectando al servidor de señalización...</li>
+          <li>Cargando...</li>
         </ul>
       </div>
-    </div>
 
-    <div id="chat-area" style="display: none">
-      <h2
-        id="chat-area-title"
-        style="display: inline-block; margin-right: 10px"
-      >
-        Chat
-      </h2>
-      <button id="leave-chat-button" style="display: none">
-        Salir del Chat
-      </button>
-
-      <div style="display: flex; gap: 20px; margin-top: 10px">
-        <div id="chat-members">
-          <h3>Participantes</h3>
-          <ul id="members-list"></ul>
-        </div>
-        <div style="flex-basis: 75%">
-          <div id="messages"></div>
+      <div id="chat-area" style="display: none">
+        <h2
+          id="chat-area-title"
+          style="display: inline-block; margin-right: 10px"
+        >
+          Chat
+        </h2>
+        <button id="leave-chat-button" style="display: none">
+          Salir del Chat
+        </button>
+        <div style="display: flex; gap: 20px; margin-top: 10px">
+          <div id="chat-members">
+            <h3>Participantes</h3>
+            <ul id="members-list"></ul>
+          </div>
+          <div style="flex-basis: 75%">
+            <div id="messages"></div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div id="message-input-area" style="display: none">
-      <input type="text" id="message-input" placeholder="Escribe tu mensaje" />
-      <button id="send-button">Enviar</button>
+      <div id="message-input-area" style="display: none">
+        <input
+          type="text"
+          id="message-input"
+          placeholder="Escribe tu mensaje"
+        />
+        <button id="send-button">Enviar</button>
+      </div>
     </div>
 
     <div id="room-name-modal" class="modal" style="display: none">
@@ -69,7 +117,6 @@
         </div>
       </div>
     </div>
-
     <div id="confirm-leave-modal" class="modal" style="display: none">
       <div class="modal-content">
         <h3>Confirmar Salida</h3>

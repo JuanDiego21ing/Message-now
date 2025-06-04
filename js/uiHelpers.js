@@ -1,7 +1,6 @@
 // js/uiHelpers.js
-import * as UIElements from './uiElements.js';
-import * as State from './state.js';
-// ... (otras importaciones y funciones displayMessage, setStatusMessage, etc. sin cambios) ...
+import * as UIElements from "./uiElements.js";
+import * as State from "./state.js";
 
 export function displayMessage(sender, text, isMe) {
   const messageDiv = document.createElement("div");
@@ -16,7 +15,9 @@ export function displayMessage(sender, text, isMe) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-  messageDiv.innerHTML = `<strong>${isMe ? "Yo" : sender}:</strong> ${sanitizedText}`;
+  messageDiv.innerHTML = `<strong>${
+    isMe ? "Yo" : sender
+  }:</strong> ${sanitizedText}`;
   UIElements.messagesDiv.appendChild(messageDiv);
   UIElements.messagesDiv.scrollTop = UIElements.messagesDiv.scrollHeight;
 }
@@ -27,12 +28,16 @@ export function setStatusMessage(message, type = "info") {
     UIElements.statusMessageDiv.className = `status-message ${type}`;
     UIElements.statusMessageDiv.style.display = "block";
 
-    if (type === "success" || type === "info") { // Auto-hide info y success
-        setTimeout(() => {
-            if (UIElements.statusMessageDiv.textContent === message) {
-                clearStatusMessage();
-            }
-        }, 3500);
+    if (type === "success" || type === "info") {
+      setTimeout(() => {
+        // Solo limpiar si el mensaje no ha cambiado (para evitar borrar un error posterior)
+        if (
+          UIElements.statusMessageDiv.textContent === message &&
+          UIElements.statusMessageDiv.classList.contains(type)
+        ) {
+          clearStatusMessage();
+        }
+      }, 3500);
     }
   }
 }
@@ -46,92 +51,147 @@ export function clearStatusMessage() {
 }
 
 export function updateMembersList() {
-  UIElements.membersList.innerHTML = ""; 
+  if (!UIElements.membersList) {
+    console.warn("Elemento membersList no encontrado en updateMembersList");
+    return;
+  }
+  UIElements.membersList.innerHTML = "";
 
-  const myUsername = State.getUsername();
-  const myClientId = State.getClientId();
-  const currentChatMembers = State.getCurrentChatMembers();
+  const myUsername = State.getUsername(); // Nombre de usuario autenticado
+  const myConnId = State.getClientId(); // ID de la conexión WebSocket actual
+  const currentChatMembers = State.getCurrentChatMembers(); // Debería ser { connId1: username1, connId2: username2, ... }
 
-  if (myUsername && myClientId && currentChatMembers[myClientId]) {
-    const myListItem = document.createElement("li");
-    myListItem.textContent = `${myUsername} (Tú)`;
-    myListItem.classList.add("me");
-    UIElements.membersList.appendChild(myListItem);
+  // Añadir al usuario actual (Tú) a la lista
+  // El servidor ya incluye al propio usuario en la lista de miembros que envía,
+  // así que esta lógica podría ser redundante o causar duplicados si no se maneja con cuidado.
+  // La clave es que `currentChatMembers` debe ser la fuente de verdad.
+  // Si `currentChatMembers` ya contiene mi `myConnId` con mi `myUsername`, el bucle de abajo me añadirá.
+  // Vamos a simplificar: el bucle se encargará de todos, y marcaremos al propio usuario.
+
+  if (
+    Object.keys(currentChatMembers).length === 0 &&
+    State.getCurrentChatId()
+  ) {
+    // Si estamos en un chat pero la lista de miembros está vacía (ej. justo al crear)
+    // podríamos añadirnos temporalmente, pero es mejor esperar la actualización del servidor.
+    // Por ahora, si está vacío, no mostramos nada o un mensaje de "cargando miembros".
+    // UIElements.membersList.innerHTML = "<li>Cargando miembros...</li>";
+    // return; // Opcional, dependiendo de si se quiere mostrar algo mientras llega la lista
   }
 
-  for (const remoteClientId in currentChatMembers) {
-    if (remoteClientId === myClientId) continue;
-
-    const memberUsername = currentChatMembers[remoteClientId];
+  for (const memberConnId in currentChatMembers) {
+    const memberUsername = currentChatMembers[memberConnId];
     const listItem = document.createElement("li");
     listItem.textContent = memberUsername;
 
-    const peer = State.getActivePeer(remoteClientId);
+    if (memberConnId === myConnId) {
+      // Si este miembro soy yo
+      listItem.textContent += " (Tú)";
+      listItem.classList.add("me");
+    }
+
+    const peer = State.getActivePeer(memberConnId); // Usar connId para buscar el peer
     if (peer && peer.connected) {
       listItem.classList.add("connected");
-      listItem.textContent += " (Conectado)";
-    } else {
+      listItem.textContent += " (Conectado P2P)";
+    } else if (memberConnId !== myConnId) {
+      // No mostrar "Uniéndose..." para mí mismo si no estoy conectado P2P conmigo mismo
       listItem.classList.add("connecting");
-      listItem.textContent += " (Uniéndose...)";
+      listItem.textContent += " (Estableciendo P2P...)";
     }
     UIElements.membersList.appendChild(listItem);
   }
 }
 
-
 export function showChatUI() {
-  UIElements.userSetupDiv.style.display = "none";
-  UIElements.createChatButton.style.display = "none";
-  UIElements.chatListDiv.style.display = "none";
+  // UIElements.userSetupDiv.style.display = "none"; // userSetupDiv ya no existe, esta línea causaría error si no se comenta/elimina.
+  // app.js ahora controla la visibilidad de authAreaDiv y mainAppAreaDiv.
+  if (UIElements.authAreaDiv) UIElements.authAreaDiv.style.display = "none"; // Ocultar autenticación
+  if (UIElements.mainAppAreaDiv)
+    UIElements.mainAppAreaDiv.style.display = "block"; // Mostrar área principal
+
+  UIElements.createChatButton.style.display = "none"; // Ocultar en la vista de chat
+  UIElements.chatListDiv.style.display = "none"; // Ocultar en la vista de chat
 
   UIElements.chatAreaDiv.style.display = "block";
   UIElements.messageInputAreaDiv.style.display = "flex";
-  if (UIElements.leaveChatButton) UIElements.leaveChatButton.style.display = "inline-block";
+  if (UIElements.leaveChatButton)
+    UIElements.leaveChatButton.style.display = "inline-block";
 
   const chatName = State.getCurrentChatName();
   const chatId = State.getCurrentChatId();
-  const roomNameDisplay = chatName || (chatId ? `ID: ${chatId.substring(0, 8)}...` : 'Chat');
-  
-  UIElements.chatAreaTitle.textContent = `Chat: ${roomNameDisplay}`;
+  const roomNameDisplay =
+    chatName || (chatId ? `ID: ${chatId.substring(0, 8)}...` : "Chat");
+
+  if (UIElements.chatAreaTitle) {
+    UIElements.chatAreaTitle.textContent = `Chat: ${roomNameDisplay}`;
+  }
   updateMembersList();
 }
 
-// MODIFICADO: Añadido parámetro doRequestChatList
 export function showLobbyUI(doRequestChatList = true) {
-  UIElements.userSetupDiv.style.display = "none"; // Asegurarse que el setup de usuario esté oculto
-  UIElements.createChatButton.style.display = "block";
-  UIElements.chatListDiv.style.display = "block";
+  // UIElements.userSetupDiv.style.display = "none"; // userSetupDiv ya no existe
+  if (UIElements.authAreaDiv) UIElements.authAreaDiv.style.display = "none"; // Ocultar autenticación
+  if (UIElements.mainAppAreaDiv)
+    UIElements.mainAppAreaDiv.style.display = "block"; // Mostrar área principal
+
+  UIElements.createChatButton.style.display = "block"; // Mostrar en el lobby
+  UIElements.chatListDiv.style.display = "block"; // Mostrar en el lobby
 
   UIElements.chatAreaDiv.style.display = "none";
   UIElements.messageInputAreaDiv.style.display = "none";
-  if (UIElements.leaveChatButton) UIElements.leaveChatButton.style.display = "none";
+  if (UIElements.leaveChatButton)
+    UIElements.leaveChatButton.style.display = "none";
 
   UIElements.messagesDiv.innerHTML = "";
   UIElements.messageInput.value = "";
-  UIElements.membersList.innerHTML = ""; // Limpiar lista de miembros al volver al lobby
+  UIElements.membersList.innerHTML = "";
 
   const signalingSocket = State.getSignalingSocket();
-  // Solo solicitar la lista si se indica explícitamente
-  if (doRequestChatList && signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
-    console.log("showLobbyUI: Solicitando explícitamente chat_list");
+  if (
+    doRequestChatList &&
+    signalingSocket &&
+    signalingSocket.readyState === WebSocket.OPEN
+  ) {
+    console.log(
+      "UIHELPERS (showLobbyUI): Solicitando explícitamente chat_list"
+    );
     signalingSocket.send(JSON.stringify({ type: "request_chat_list" }));
   }
-  // El mensaje de bienvenida al lobby se puede poner aquí o cuando la lista de chats se actualice.
-  // Por ahora, lo dejamos aquí.
-  // No borrar el status message si ya hay uno importante de error.
-  if (!UIElements.statusMessageDiv.classList.contains('error') && !UIElements.statusMessageDiv.classList.contains('warning')) {
+
+  // Solo establecer mensaje de bienvenida si no hay un error o warning importante
+  if (
+    UIElements.statusMessageDiv &&
+    !UIElements.statusMessageDiv.classList.contains("error") &&
+    !UIElements.statusMessageDiv.classList.contains("warning")
+  ) {
     setStatusMessage("Bienvenido al lobby. Crea o únete a un chat.", "info");
   }
 }
 
+/**
+ * Esta función podría ya no ser necesaria o su lógica ha sido absorbida
+ * por showAuthUI y showMainAppUI en app.js
+ */
 export function hideInitialUI() {
-  UIElements.userSetupDiv.style.display = "flex";
-  UIElements.chatAreaDiv.style.display = "none";
-  UIElements.messageInputAreaDiv.style.display = "none";
-  UIElements.chatListDiv.style.display = "none";
-  UIElements.createChatButton.style.display = "none";
-  UIElements.statusMessageDiv.style.display = "none";
-  UIElements.leaveChatButton.style.display = "none";
-  UIElements.roomNameModal.style.display = "none";
-  UIElements.confirmLeaveModal.style.display = "none";
+  console.warn(
+    "UIHELPERS: hideInitialUI() llamada, pero podría ser obsoleta. Verificar su uso."
+  );
+  // UIElements.userSetupDiv.style.display = "flex"; // userSetupDiv ya no existe
+  if (UIElements.authAreaDiv) UIElements.authAreaDiv.style.display = "flex"; // Mostrar auth por defecto si esto se llamara
+  if (UIElements.mainAppAreaDiv)
+    UIElements.mainAppAreaDiv.style.display = "none";
+
+  if (UIElements.chatAreaDiv) UIElements.chatAreaDiv.style.display = "none";
+  if (UIElements.messageInputAreaDiv)
+    UIElements.messageInputAreaDiv.style.display = "none";
+  if (UIElements.chatListDiv) UIElements.chatListDiv.style.display = "none";
+  if (UIElements.createChatButton)
+    UIElements.createChatButton.style.display = "none";
+  // statusMessageDiv se maneja por setStatusMessage/clearStatusMessage
+  if (UIElements.leaveChatButton)
+    UIElements.leaveChatButton.style.display = "none";
+  if (UIElements.roomNameModal) UIElements.roomNameModal.style.display = "none";
+  if (UIElements.confirmLeaveModal)
+    UIElements.confirmLeaveModal.style.display = "none";
 }
