@@ -5,7 +5,7 @@ import {
   setStatusMessage,
   displayMessage,
   showLobbyUI,
-  hideInitialUI,
+  // hideInitialUI, // Ya no se usa, initializeApp maneja la UI inicial
   updateMembersList,
   clearStatusMessage,
 } from "./uiHelpers.js";
@@ -18,6 +18,7 @@ import { sendMessageToPeers } from "./webrtc.js";
 
 // Función para mostrar el área de autenticación y ocultar la app principal
 function showAuthUI() {
+  console.log("APP.JS: showAuthUI() INVOCADO");
   UIElements.authAreaDiv.style.display = "block";
   UIElements.mainAppAreaDiv.style.display = "none";
   UIElements.loginFormContainer.style.display = "block"; // Mostrar login por defecto
@@ -41,9 +42,6 @@ function hideChatElements() {
   if (UIElements.chatAreaDiv) UIElements.chatAreaDiv.style.display = "none";
   if (UIElements.messageInputAreaDiv)
     UIElements.messageInputAreaDiv.style.display = "none";
-  // Dejamos chatListDiv y createChatButton visibles si mainAppArea es visible
-  // if (UIElements.chatListDiv) UIElements.chatListDiv.style.display = "none";
-  // if (UIElements.createChatButton) UIElements.createChatButton.style.display = "none";
   if (UIElements.leaveChatButton)
     UIElements.leaveChatButton.style.display = "none";
 }
@@ -70,24 +68,40 @@ async function handleRegistration(event) {
 
   try {
     setStatusMessage("Registrando...", "info");
-    const response = await fetch("http://localhost:8081/register", {
+    // ---- URL MODIFICADA A RELATIVA ----
+    const response = await fetch("/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
-    const data = await response.json();
-    if (response.ok) {
-      setStatusMessage(
-        data.message || "Registro exitoso. Ahora puedes iniciar sesión.",
-        "success"
-      );
-      UIElements.registerFormContainer.style.display = "none";
-      UIElements.loginFormContainer.style.display = "block";
-      UIElements.registerForm.reset();
-    } else {
-      setStatusMessage(data.message || "Error en el registro.", "error");
+
+    // Manejo de respuesta mejorado
+    if (!response.ok) {
+      let errorMsg = `Error en registro (HTTP ${response.status} ${response.statusText})`;
+      try {
+        const errorData = await response.json(); // Intenta parsear como JSON
+        errorMsg = errorData.message || errorMsg;
+      } catch (e) {
+        console.warn(
+          "La respuesta de error del servidor para /register no era JSON."
+        );
+        // errorMsg ya tiene el status HTTP, lo cual es suficiente si no hay cuerpo JSON
+      }
+      setStatusMessage(errorMsg, "error");
+      return;
     }
+
+    const data = await response.json(); // Si response.ok, esperamos JSON
+    // El servidor envía 201 en éxito, lo cual es 'ok'
+    setStatusMessage(
+      data.message || "Registro exitoso. Ahora puedes iniciar sesión.",
+      "success"
+    );
+    UIElements.registerFormContainer.style.display = "none";
+    UIElements.loginFormContainer.style.display = "block";
+    UIElements.registerForm.reset();
   } catch (error) {
+    // Error de red o similar
     console.error("Error en fetch /register:", error);
     setStatusMessage("Error de red al intentar registrar.", "error");
   }
@@ -105,37 +119,33 @@ async function handleLogin(event) {
 
   try {
     setStatusMessage("Iniciando sesión...", "info");
-    const response = await fetch("http://localhost:8081/login", {
+    // ---- URL MODIFICADA A RELATIVA ----
+    const response = await fetch("/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
-    // No intentes parsear response.json() si la respuesta no fue ok y no esperas JSON
+
     if (!response.ok) {
-      // Intenta obtener el mensaje de error si es JSON, sino usa un mensaje genérico
-      let errorMsg = `Error en inicio de sesión (HTTP ${response.status})`;
+      let errorMsg = `Error en inicio de sesión (HTTP ${response.status} ${response.statusText})`;
       try {
         const errorData = await response.json();
         errorMsg = errorData.message || errorMsg;
       } catch (e) {
-        // No era JSON, o hubo otro error al parsearlo
         console.warn(
-          "La respuesta de error del login no era JSON:",
-          await response.text()
+          "La respuesta de error del login no era JSON o no pudo ser parseada."
         );
       }
       setStatusMessage(errorMsg, "error");
       State.clearAuthenticatedUser();
-      return; // Salir temprano si la respuesta no es OK
+      return;
     }
 
-    const data = await response.json(); // { message, token, username, userId }
+    const data = await response.json();
 
-    // Esta comprobación es redundante si ya verificamos response.ok, pero es una doble seguridad
     if (data.token) {
       State.setAuthenticatedUser(data.username, data.userId, data.token);
 
-      // ---- VERIFICA ESTOS LOGS ----
       console.log(
         "LOGIN SUCCESS (app.js): State.username set to:",
         State.getUsername()
@@ -148,15 +158,12 @@ async function handleLogin(event) {
         "LOGIN SUCCESS (app.js): State.authToken set:",
         State.getAuthToken() ? "Yes, token present" : "No, token MISSING!"
       );
-      // ---- FIN DE VERIFICACIÓN ----
 
       setStatusMessage(data.message || "Inicio de sesión exitoso.", "success");
       UIElements.loginForm.reset();
       showMainAppUI();
       connectToSignalingServer();
     } else {
-      // Esto no debería ocurrir si response.ok es true y el servidor envía token.
-      // Podría ser una respuesta 200 pero sin token, lo cual sería un error de lógica del servidor.
       setStatusMessage(
         data.message || "Error en inicio de sesión: no se recibió token.",
         "error"
@@ -165,9 +172,6 @@ async function handleLogin(event) {
     }
   } catch (error) {
     console.error("Error en fetch /login o al procesar la respuesta:", error);
-    // El error que viste ("SyntaxError: Failed to execute 'json' on 'Response': Unexpected end of JSON input")
-    // ocurre si la respuesta del servidor NO es JSON válido (ej. un error HTML 405 plano, o una respuesta vacía).
-    // El bloque if (!response.ok) de arriba intenta manejar esto de forma más controlada.
     setStatusMessage(
       "Error de red o respuesta inesperada al intentar iniciar sesión.",
       "error"
@@ -177,6 +181,7 @@ async function handleLogin(event) {
 }
 
 function handleLogout() {
+  console.log("LOGOUT (app.js): Iniciando cierre de sesión...");
   setStatusMessage("Cerrando sesión...", "info");
   const signalingSocket = State.getSignalingSocket();
   if (
@@ -184,15 +189,20 @@ function handleLogout() {
     (signalingSocket.readyState === WebSocket.OPEN ||
       signalingSocket.readyState === WebSocket.CONNECTING)
   ) {
+    console.log("LOGOUT (app.js): Cerrando WebSocket...");
     signalingSocket.close(1000, "Logout by user");
+  } else {
+    console.log("LOGOUT (app.js): WebSocket no estaba abierto o conectado.");
   }
   State.clearAuthenticatedUser();
   State.resetCurrentChatState();
+  console.log("LOGOUT (app.js): Llamando a showAuthUI()...");
   showAuthUI();
   UIElements.availableChatsList.innerHTML = "";
   UIElements.messagesDiv.innerHTML = "";
   UIElements.membersList.innerHTML = "";
   setStatusMessage("Sesión cerrada.", "success");
+  console.log("LOGOUT (app.js): Cierre de sesión completado en cliente.");
 }
 
 function initializeApp() {
@@ -261,7 +271,7 @@ function initializeApp() {
           "warning"
         );
         State.resetCurrentChatState();
-        showLobbyUI(true);
+        showLobbyUI(true); // showLobbyUI(true) para que intente recargar lista de chats
         return;
       }
 
@@ -299,7 +309,7 @@ export function performLeaveChat(requestDeleteChat) {
       })
     );
     State.resetCurrentChatState();
-    showLobbyUI(true);
+    showLobbyUI(true); // showLobbyUI(true) para que intente recargar lista de chats
 
     if (requestDeleteChat) {
       setStatusMessage("Has salido y solicitado eliminar la sala.", "success");
@@ -312,7 +322,7 @@ export function performLeaveChat(requestDeleteChat) {
       "error"
     );
     State.resetCurrentChatState();
-    showLobbyUI(true);
+    showLobbyUI(true); // showLobbyUI(true) para que intente recargar lista de chats
   }
 }
 

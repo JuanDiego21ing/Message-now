@@ -1,29 +1,41 @@
 // server.js
 const WebSocket = require("ws");
 const express = require("express");
-const cors = require('cors');
+// const cors = require('cors'); // Ya no es estrictamente necesario si servimos el frontend desde aquí
 const http = require("http");
 const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const path = require("path"); // Asegúrate de que este require esté
 
 // --- CONFIGURACIÓN ---
 const PORT = process.env.PORT || 8081;
-const JWT_SECRET = "tu_secreto_jwt_super_seguro_y_largo_aqui"; // ¡CAMBIA ESTO!
+const JWT_SECRET = "tu_secreto_jwt_super_seguro_y_largo_aqui"; // ¡MANTÉN TU SECRETO!
 const SALT_ROUNDS = 10;
 
 // --- CONFIGURACIÓN DE EXPRESS ---
 const app = express();
-app.use(cors());
+
+// app.use(cors()); // <--- COMENTADO/ELIMINADO: No es necesario si el frontend se sirve desde este mismo servidor Express
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// --- SERVIR ARCHIVOS ESTÁTICOS DEL CLIENTE ---
+// Esto sirve los archivos (index.html, styles.css, carpeta js/) desde el mismo
+// directorio donde se encuentra este server.js.
+app.use(express.static(path.join(__dirname))); // Sirve archivos de la carpeta actual
+// Ruta principal para servir index.html cuando alguien accede a la raíz (ej. http://192.168.1.109:8081/)
+app.get("/", (req, res) => {
+  console.log(">>> Solicitud GET a / : Sirviendo index.html");
+  res.sendFile(path.join(__dirname, "index.html"));
+});
 
 // --- CONFIGURACIÓN DEL POOL DE CONEXIÓN A POSTGRESQL ---
 const pool = new Pool({
   user: "postgres",
-  host: "localhost",
+  host: "localhost", // Correcto, ya que PostgreSQL corre en la misma máquina que server.js
   database: "chat_app",
-  password: "postgres", // Asegúrate que esta sea tu contraseña real
+  password: "postgres", // ¡ASEGÚRATE QUE ESTA SEA TU CONTRASEÑA REAL!
   port: 5432,
 });
 
@@ -39,19 +51,17 @@ pool.on("error", (err) => {
 
 // --- RUTAS HTTP PARA AUTENTICACIÓN ---
 app.post("/register", async (req, res) => {
-  console.log(">>> Solicitud POST a /register recibida. Cuerpo:", req.body); // <--- LOG AÑADIDO
+  console.log(">>> Solicitud POST a /register recibida. Cuerpo:", req.body);
   const { username, password } = req.body;
 
   if (!username || !password) {
-    console.log(">>> /register: Faltan username o password."); // <--- LOG AÑADIDO
-    return res
-      .status(400)
-      .json({
-        message: "El nombre de usuario y la contraseña son obligatorios.",
-      });
+    console.log(">>> /register: Faltan username o password.");
+    return res.status(400).json({
+      message: "El nombre de usuario y la contraseña son obligatorios.",
+    });
   }
   if (password.length < 6) {
-    console.log(">>> /register: Contraseña muy corta."); // <--- LOG AÑADIDO
+    console.log(">>> /register: Contraseña muy corta.");
     return res
       .status(400)
       .json({ message: "La contraseña debe tener al menos 6 caracteres." });
@@ -60,26 +70,23 @@ app.post("/register", async (req, res) => {
   try {
     console.log(
       `>>> /register: Verificando si el usuario '${username}' existe...`
-    ); // <--- LOG AÑADIDO
+    );
     const userCheck = await pool.query(
       "SELECT username FROM users WHERE username = $1",
       [username]
     );
     if (userCheck.rows.length > 0) {
-      console.log(`>>> /register: Usuario '${username}' ya existe.`); // <--- LOG AÑADIDO
-      return res
-        .status(409)
-        .json({
-          message:
-            "El nombre de usuario ya está en uso. Por favor, elige otro.",
-        });
+      console.log(`>>> /register: Usuario '${username}' ya existe.`);
+      return res.status(409).json({
+        message: "El nombre de usuario ya está en uso. Por favor, elige otro.",
+      });
     }
 
-    console.log(`>>> /register: Hasheando contraseña para '${username}'...`); // <--- LOG AÑADIDO
+    console.log(`>>> /register: Hasheando contraseña para '${username}'...`);
     const salt = await bcrypt.genSalt(SALT_ROUNDS);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    console.log(`>>> /register: Insertando usuario '${username}' en la BD...`); // <--- LOG AÑADIDO
+    console.log(`>>> /register: Insertando usuario '${username}' en la BD...`);
     const newUserResult = await pool.query(
       "INSERT INTO users (username, hashed_password, salt) VALUES ($1, $2, $3) RETURNING user_id, username, created_at",
       [username, hashedPassword, salt]
@@ -102,52 +109,48 @@ app.post("/register", async (req, res) => {
       ">>> /register: Error durante el registro:",
       err.stack || err.message || err
     );
-    res
-      .status(500)
-      .json({
-        message: "Error interno del servidor al intentar registrar el usuario.",
-      });
+    res.status(500).json({
+      message: "Error interno del servidor al intentar registrar el usuario.",
+    });
   }
 });
 
 app.post("/login", async (req, res) => {
-  console.log(">>> Solicitud POST a /login recibida. Cuerpo:", req.body); // <--- LOG AÑADIDO
+  console.log(">>> Solicitud POST a /login recibida. Cuerpo:", req.body);
   const { username, password } = req.body;
 
   if (!username || !password) {
-    console.log(">>> /login: Faltan username o password."); // <--- LOG AÑADIDO
-    return res
-      .status(400)
-      .json({
-        message: "El nombre de usuario y la contraseña son obligatorios.",
-      });
+    console.log(">>> /login: Faltan username o password.");
+    return res.status(400).json({
+      message: "El nombre de usuario y la contraseña son obligatorios.",
+    });
   }
 
   try {
-    console.log(`>>> /login: Buscando usuario '${username}' en la BD...`); // <--- LOG AÑADIDO
+    console.log(`>>> /login: Buscando usuario '${username}' en la BD...`);
     const result = await pool.query(
       "SELECT user_id, username, hashed_password, salt FROM users WHERE username = $1",
       [username]
     );
 
     if (result.rows.length === 0) {
-      console.log(`>>> /login: Usuario '${username}' no encontrado.`); // <--- LOG AÑADIDO
+      console.log(`>>> /login: Usuario '${username}' no encontrado.`);
       return res.status(401).json({ message: "Credenciales inválidas." });
     }
 
     const user = result.rows[0];
-    console.log(`>>> /login: Verificando contraseña para '${username}'...`); // <--- LOG AÑADIDO
+    console.log(`>>> /login: Verificando contraseña para '${username}'...`);
     const isValidPassword = await bcrypt.compare(
       password,
       user.hashed_password
     );
 
     if (!isValidPassword) {
-      console.log(`>>> /login: Contraseña inválida para '${username}'.`); // <--- LOG AÑADIDO
+      console.log(`>>> /login: Contraseña inválida para '${username}'.`);
       return res.status(401).json({ message: "Credenciales inválidas." });
     }
 
-    console.log(`>>> /login: Generando token JWT para '${username}'...`); // <--- LOG AÑADIDO
+    console.log(`>>> /login: Generando token JWT para '${username}'...`);
     const tokenPayload = {
       userId: user.user_id,
       username: user.username,
@@ -169,11 +172,9 @@ app.post("/login", async (req, res) => {
       ">>> /login: Error durante el inicio de sesión:",
       err.stack || err.message || err
     );
-    res
-      .status(500)
-      .json({
-        message: "Error interno del servidor al intentar iniciar sesión.",
-      });
+    res.status(500).json({
+      message: "Error interno del servidor al intentar iniciar sesión.",
+    });
   }
 });
 
@@ -191,7 +192,7 @@ function generateUniqueId() {
   );
 }
 
-// ----- LÓGICA DE WEBSOCKET ----- (Mantenida como en tu versión)
+// ----- LÓGICA DE WEBSOCKET -----
 wss.on("connection", (ws, req) => {
   console.log(">>> Nueva conexión WebSocket entrante...");
   const urlParams = new URLSearchParams(req.url.split("?")[1]);
@@ -248,7 +249,7 @@ wss.on("connection", (ws, req) => {
   ws.send(
     JSON.stringify({
       type: "your_id",
-      clientId: ws.connId,
+      clientId: ws.connId, // Este es el connId que el cliente usa para identificarse en algunos mensajes P2P
       username: ws.username,
     })
   );
@@ -281,7 +282,7 @@ wss.on("connection", (ws, req) => {
     const currentAuthenticatedUsername = ws.username;
 
     switch (data.type) {
-      case "register_user":
+      case "register_user": // Unirse a un chat
         const regChatId = data.chatId;
         const regUsername = currentAuthenticatedUsername;
 
@@ -370,8 +371,6 @@ wss.on("connection", (ws, req) => {
         sendUpdatedChatListToAllClients();
         break;
 
-      // ... (resto de los cases: signal, leave_chat, request_chat_list, default)
-      // Es buena idea añadir logs similares dentro de ellos si sigues teniendo problemas.
       case "signal":
         const senderConnId = ws.connId;
         const receiverConnId = data.receiverId;
@@ -472,7 +471,6 @@ wss.on("connection", (ws, req) => {
 });
 // (Fin de wss.on("connection"))
 
-// (Funciones auxiliares handleUserLeave, broadcastChatMembersUpdate, etc. se mantienen igual que en tu código)
 function handleUserLeave(leavingWs, chatIdToLeave, deleteChatExplicitly) {
   if (!chatIdToLeave) {
     console.warn(
@@ -604,5 +602,11 @@ function sendUpdatedChatListToClient(targetWs) {
 server.listen(PORT, () => {
   console.log(
     `Servidor HTTP y WebSocket escuchando en http://localhost:${PORT}`
+  );
+  // Para pruebas en red local, informa también sobre la IP de red si es posible
+  // (esto es más complejo de obtener programáticamente de forma fiable todas las IPs,
+  //  pero el usuario ya conoce su IP 192.168.1.109)
+  console.log(
+    `   Accesible en tu red local a través de la IP de esta máquina en el puerto ${PORT}`
   );
 });

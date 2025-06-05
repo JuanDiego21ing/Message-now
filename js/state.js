@@ -3,13 +3,14 @@ export let username = null;
 export let userId = null;
 export let authToken = null;
 export let clientId = null; // ID de conexión WebSocket
-export let signalingSocket = null;
+export let signalingSocket = null; // Asegúrate que esta declaración esté presente
 export const activePeers = new Map();
 export let currentChatId = null;
 export let currentChatName = null;
 export let currentChatMembers = {};
 
-export const SIGNALING_SERVER_URL = "ws://localhost:8081"; // ¡O tu IP local si pruebas en red!
+// ---- MODIFICACIÓN AQUÍ ----
+export const SIGNALING_SERVER_URL = "ws://192.168.1.109:8081"; // IP de tu laptop anfitrión
 export const RECONNECT_INTERVAL = 5000;
 
 export function setAuthenticatedUser(authUsername, authUserId, token) {
@@ -53,14 +54,14 @@ export function setAuthenticatedUser(authUsername, authUserId, token) {
 }
 
 export function getUsername() {
-  // console.log("STATE.JS: getUsername llamado, devuelve:", username); // Activar si es muy necesario, puede ser ruidoso
+  // console.log("STATE.JS: getUsername llamado, devuelve:", username);
   return username;
 }
 export function getUserId() {
   return userId;
 }
 export function getAuthToken() {
-  // console.log("STATE.JS: getAuthToken llamado, devuelve token presente:", authToken ? "Sí" : "No"); // Activar si es necesario
+  // console.log("STATE.JS: getAuthToken llamado, devuelve token presente:", authToken ? "Sí" : "No");
   return authToken;
 }
 
@@ -101,7 +102,7 @@ export function loadStateFromStorage() {
 export function clearAuthenticatedUser() {
   // ---- LOG AÑADIDO ----
   console.log("STATE.JS: clearAuthenticatedUser INVOCADO.");
-  setAuthenticatedUser(null, null, null); // Esto llamará a la lógica de eliminación de localStorage también
+  setAuthenticatedUser(null, null, null);
 }
 
 export function setClientId(id) {
