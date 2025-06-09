@@ -1,22 +1,21 @@
 // server.js
 const WebSocket = require("ws");
 const express = require("express");
-// const cors = require('cors'); // Ya no es estrictamente necesario si servimos el frontend desde aquí
 const http = require("http");
 const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const path = require("path"); // Asegúrate de que este require esté
+const path = require("path"); 
 
 // --- CONFIGURACIÓN ---
 const PORT = process.env.PORT || 8081;
-const JWT_SECRET = "tu_secreto_jwt_super_seguro_y_largo_aqui"; // ¡MANTÉN TU SECRETO!
+const JWT_SECRET = "tu_secreto_jwt_super_seguro_y_largo_aqui"; 
 const SALT_ROUNDS = 10;
 
-// --- CONFIGURACIÓN DE EXPRESS ---
+
 const app = express();
 
-// app.use(cors()); // <--- COMENTADO/ELIMINADO: No es necesario si el frontend se sirve desde este mismo servidor Express
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -33,9 +32,9 @@ app.get("/", (req, res) => {
 // --- CONFIGURACIÓN DEL POOL DE CONEXIÓN A POSTGRESQL ---
 const pool = new Pool({
   user: "postgres",
-  host: "localhost", // Correcto, ya que PostgreSQL corre en la misma máquina que server.js
+  host: "localhost", 
   database: "chat_app",
-  password: "postgres", // ¡ASEGÚRATE QUE ESTA SEA TU CONTRASEÑA REAL!
+  password: "postgres", 
   port: 5432,
 });
 

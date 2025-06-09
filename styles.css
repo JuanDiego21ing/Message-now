@@ -1,325 +1,114 @@
+/* styles.css */
+
+/* --- 1. Paleta de Colores y Variables Globales --- */
+:root {
+  --primary-color: #0d6efd; /* Azul estándar de Bootstrap */
+  --secondary-color: #6c757d; /* Gris secundario */
+  --light-gray: #f8f9fa; /* Un gris muy claro para fondos */
+  --background-color: #e9ecef; /* Color de fondo principal del body */
+  --text-color: #212529; /* Color de texto principal */
+  --message-sent-bg: #0d6efd; /* Fondo de burbuja de chat enviada */
+  --message-sent-text: #ffffff; /* Texto de burbuja de chat enviada */
+  --message-received-bg: #e9ecef; /* Fondo de burbuja de chat recibida */
+  --message-received-text: #212529; /* Texto de burbuja de chat recibida */
+  --system-message-color: #6c757d; /* Color para mensajes del sistema */
+}
+
+/* --- 2. Estilos Base y Layout --- */
 body {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #e0f2f7;
-  color: #333;
-  margin: 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-height: 95vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
 }
 
-#user-setup,
-#chat-list,
-#chat-area,
-#message-input-area {
-  background-color: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-  padding: 25px;
-  margin-bottom: 20px;
-  width: 100%;
-  max-width: 800px;
+/* Ajustes al contenedor principal de Bootstrap */
+.container {
+  max-width: 1140px;
 }
 
-#user-setup label {
-  font-weight: bold;
-  margin-right: 10px;
-  color: #0056b3;
+/* Ocultamos la barra de status, ya que la reemplazaremos con SweetAlert2 */
+#status-message {
+  display: none !important;
 }
 
-#user-setup input[type="text"],
-#message-input-area input[type="text"] {
-  flex-grow: 1;
-  padding: 12px;
-  border: 1px solid #a7d9f2;
-  border-radius: 5px;
-  font-size: 1em;
-  margin-right: 10px;
-  box-sizing: border-box;
-}
+/* --- 3. Estilos Específicos del Chat --- */
 
-#user-setup button,
-#create-chat,
-#send-button,
-#leave-chat-button {
-  padding: 12px 25px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 1em;
-  transition: background-color 0.2s ease-in-out;
-}
-
-#user-setup button:hover,
-#create-chat:hover,
-#send-button:hover,
-#leave-chat-button:hover {
-  background-color: #0056b3;
-}
-
-#create-chat {
-  display: block;
-  margin: 20px auto;
-}
-
-.status-message {
-  padding: 10px 15px;
-  margin-bottom: 15px;
-  border-radius: 5px;
-  text-align: center;
-  font-weight: bold;
-  color: #fff;
-  width: 100%;
-  max-width: 800px;
-  box-sizing: border-box;
-}
-
-.status-message.info {
-  background-color: #17a2b8;
-}
-
-.status-message.success {
-  background-color: #28a745;
-}
-
-.status-message.warning {
-  background-color: #ffc107;
-  color: #333;
-}
-
-.status-message.error {
-  background-color: #dc3545;
-}
-
-#chat-list h2 {
-  color: #007bff;
-  margin-top: 0;
-  margin-bottom: 15px;
-}
-
-#available-chats {
-  list-style: none;
-  padding: 0;
-}
-
-#available-chats li {
-  background-color: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 5px;
-  padding: 10px 15px;
-  margin-bottom: 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.95em;
-  color: #495057;
-}
-
-#available-chats li strong {
-  color: #0056b3;
-}
-
-#available-chats li button {
-  padding: 8px 15px;
-  background-color: #28a745;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.85em;
-  transition: background-color 0.2s ease-in-out;
-}
-
-#available-chats li button:hover {
-  background-color: #218838;
-}
-
-#chat-area h2 {
-  color: #007bff;
-  margin-bottom: 15px;
-}
-
+/* Contenedor de mensajes con scroll */
 #messages {
-  border: 1px solid #dee2e6;
-  border-radius: 5px;
-  padding: 15px;
-  height: 350px;
-  overflow-y: auto;
-  background-color: #fefefe;
-  margin-bottom: 15px;
+  min-height: 50vh; /* Altura mínima para que no colapse si está vacío */
+  max-height: 60vh; /* Altura máxima para evitar que sea demasiado grande */
+  overflow-y: auto; /* ¡Crucial! Añade scroll vertical cuando los mensajes exceden el espacio */
   display: flex;
   flex-direction: column;
+  gap: 0.75rem; /* Espacio entre mensajes */
 }
 
+/* Estilo base para cada burbuja de mensaje */
 .message {
-  margin-bottom: 8px;
+  padding: 0.5rem 1rem;
+  border-radius: 1.25rem; /* Bordes bien redondeados */
+  max-width: 75%; /* Evita que un mensaje ocupe todo el ancho */
   line-height: 1.4;
-  word-wrap: break-word;
-  max-width: 90%;
+  word-wrap: break-word; /* Para que las palabras largas se rompan */
 }
 
-.message strong {
-  color: #0056b3;
+/* Mensajes enviados por el usuario actual ("Yo") */
+.message.me {
+  background-color: var(--message-sent-bg);
+  color: var(--message-sent-text);
+  align-self: flex-end; /* Alinea la burbuja a la derecha */
+  border-bottom-right-radius: 0.5rem; /* Estilo de "cola" de burbuja */
 }
 
-.message:nth-child(even) {
-  background-color: #f0f0f0;
-  padding: 5px;
-  border-radius: 4px;
+/* Mensajes recibidos de otros (por defecto) */
+.message {
+  background-color: var(--message-received-bg);
+  color: var(--message-received-text);
+  align-self: flex-start; /* Alinea la burbuja a la izquierda */
+  border-bottom-left-radius: 0.5rem; /* Estilo de "cola" de burbuja */
 }
 
-#message-input-area {
-  display: flex;
-  gap: 10px;
-  padding: 0;
-  margin-bottom: 0;
+/* Mensajes del sistema */
+.message.system {
+  background-color: transparent;
+  color: var(--system-message-color);
+  font-style: italic;
+  font-size: 0.85rem;
+  align-self: center; /* Centrar mensajes del sistema */
+  text-align: center;
+  width: 100%;
+  max-width: 100%;
 }
 
-#message-input-area input {
-  flex-grow: 1;
+.message.system strong {
+  color: inherit;
 }
 
-#chat-members {
-  flex-basis: 25%;
-  min-width: 150px;
-  background-color: #f9f9f9;
-  padding: 15px;
-  border-radius: 8px;
-  border: 1px solid #eee;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-#chat-members h3 {
-  margin-top: 0;
-  color: #007bff;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 10px;
-  margin-bottom: 10px;
-}
-
-#members-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-#members-list li {
-  padding: 8px 0;
-  font-size: 0.9em;
-  color: #555;
-  border-bottom: 1px dashed #f0f0f0;
-}
-
-#members-list li:last-child {
-  border-bottom: none;
-}
-
-#members-list li.connected {
-  font-weight: bold;
-  color: #28a745;
+/* Estilos para la lista de miembros */
+#members-list .list-group-item {
+  border: none;
+  padding: 0.5rem 0.25rem;
 }
 
 #members-list li.me {
   font-weight: bold;
-  color: #007bff;
+  color: var(--primary-color);
+}
+#members-list li.connected {
+  color: #198754; /* Verde de éxito de Bootstrap */
 }
 
-.modal {
-  position: fixed;
-  z-index: 1000;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  overflow: auto;
-  background-color: rgba(0, 0, 0, 0.6);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.modal-content {
-  background-color: #fefefe;
-  padding: 30px;
-  border: 1px solid #888;
-  width: 90%;
-  max-width: 450px;
-  border-radius: 12px;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-  text-align: center;
-  animation: fadeIn 0.3s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
+/* --- 4. Media Queries para Responsividad (Ajustes Adicionales) --- */
+/* Bootstrap ya hace la mayor parte del trabajo con las clases col-md-*.
+   Este media query es para ajustes finos en pantallas más grandes. */
+@media (min-width: 768px) {
+  /* En pantallas de tablet y más grandes, le damos un poco más de aire al contenedor */
+  .container {
+    padding: 2rem;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  /* Para que el área de mensajes no sea excesivamente alta en pantallas grandes */
+  #messages {
+    max-height: 70vh;
   }
-}
-
-.modal-content h3 {
-  margin-top: 0;
-  color: #007bff;
-  font-size: 1.5em;
-  margin-bottom: 20px;
-}
-
-.modal-content label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: bold;
-  color: #555;
-}
-
-.modal-content input[type="text"] {
-  width: calc(100% - 20px);
-  padding: 12px;
-  margin: 10px 0 20px 0;
-  border: 1px solid #a7d9f2;
-  border-radius: 5px;
-  font-size: 1.1em;
-  box-sizing: border-box;
-}
-
-.modal-buttons {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-  gap: 15px;
-}
-
-.modal-buttons button {
-  padding: 12px 25px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 1em;
-  transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
-}
-
-#confirm-room-name-button {
-  background-color: #28a745;
-  color: white;
-}
-
-#confirm-room-name-button:hover {
-  background-color: #218838;
-  transform: translateY(-2px);
-}
-
-#cancel-room-name-button {
-  background-color: #dc3545;
-  color: white;
-}
-
-#cancel-room-name-button:hover {
-  background-color: #c82333;
-  transform: translateY(-2px);
 }

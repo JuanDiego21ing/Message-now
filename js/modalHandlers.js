@@ -3,121 +3,128 @@
 import * as UIElements from "./uiElements.js";
 import * as State from "./state.js";
 import { setStatusMessage, showChatUI, displayMessage } from "./uiHelpers.js";
-import { performLeaveChat } from "./app.js"; // Asumiendo que está en app.js
+import { performLeaveChat } from "./app.js";
 import { setIsJoiningOrCreatingChat } from "./signaling.js";
 
+// La librería SweetAlert2 (Swal) ya está disponible globalmente porque la añadimos en index.html
+
 export function initModalEventHandlers() {
-  UIElements.createChatButton.addEventListener("click", () => {
-    // ---- VERIFICA ESTE LOG ----
-    console.log(
-      "CREATE CHAT CLICKED (modalHandlers.js): State.username is:",
-      State.getUsername()
-    );
-    console.log(
-      "CREATE CHAT CLICKED (modalHandlers.js): State.getAuthToken is present:",
-      State.getAuthToken() ? "Yes" : "No"
-    );
-    // ---- FIN DE VERIFICACIÓN ----
+  // --- 1. MODIFICADO: Event Listener para "Crear Nuevo Chat" ---
+  if (UIElements.createChatButton) {
+    UIElements.createChatButton.addEventListener("click", () => {
+      // Estas verificaciones iniciales se mantienen
+      if (!State.getUsername()) {
+        // Usaremos SweetAlert2 también para este error
+        Swal.fire({
+          icon: "error",
+          title: "No Autenticado",
+          text: "Debes iniciar sesión para poder crear un chat.",
+        });
+        return;
+      }
+      if (State.getCurrentChatId()) {
+        Swal.fire({
+          icon: "warning",
+          title: "Ya estás en un chat",
+          text: "Por favor, sal del chat actual antes de crear uno nuevo.",
+        });
+        return;
+      }
 
-    if (!State.getUsername()) {
-      // Esta es probablemente la condición que está fallando
-      setStatusMessage(
-        "Debes estar autenticado y tener un nombre de usuario para crear un chat. Intenta iniciar sesión de nuevo.",
-        "error"
-      );
-      return;
-    }
-    if (State.getCurrentChatId()) {
-      setStatusMessage(
-        "Ya estás en un chat. Sal de él para crear uno nuevo.",
-        "warning"
-      );
-      return;
-    }
+      // --- REEMPLAZO DEL MODAL HTML POR SWEETALERT2 ---
+      // Ya no mostramos el div del modal, sino que llamamos a Swal.fire()
+      Swal.fire({
+        title: "Crear Nueva Sala de Chat",
+        input: "text",
+        inputLabel: "Nombre de la sala",
+        inputPlaceholder: "Ej: Equipo de Proyecto, Amigos...",
+        showCancelButton: true,
+        confirmButtonText: "Crear Sala",
+        cancelButtonText: "Cancelar",
+        confirmButtonColor: "#198754", // Color verde de éxito de Bootstrap
+        cancelButtonColor: "#dc3545", // Color rojo de peligro de Bootstrap
+        inputValidator: (value) => {
+          // Validación para el campo de entrada
+          if (!value || value.trim().length < 3 || value.trim().length > 30) {
+            return "Por favor, ingresa un nombre válido (3-30 caracteres).";
+          }
+        },
+      }).then((result) => {
+        // Swal.fire devuelve una promesa. El código aquí se ejecuta después de que el usuario interactúa con el modal.
 
-    // El resto de tu lógica para mostrar el modal de nombre de sala...
-    UIElements.roomNameInput.value = "";
-    UIElements.roomNameModal.style.display = "flex";
-    UIElements.roomNameInput.focus();
-  });
+        // Si el usuario hizo clic en "Crear Sala" y la validación pasó
+        if (result.isConfirmed) {
+          const roomName = result.value.trim();
 
-  // ... (resto de tus manejadores de eventos en initModalEventHandlers:
-  //      confirmRoomNameButton, cancelRoomNameButton,
-  //      confirmLeaveButton, cancelLeaveButton) ...
+          // --- Lógica que antes estaba en el listener de 'confirmRoomNameButton' ---
+          const signalingSocket = State.getSignalingSocket();
 
-  // Asegúrate que confirmRoomNameButton también use el username autenticado
-  UIElements.confirmRoomNameButton.addEventListener("click", () => {
-    const roomName = UIElements.roomNameInput.value.trim();
-    const signalingSocket = State.getSignalingSocket();
-    const currentUsername = State.getUsername(); // Obtener el username autenticado
-    const currentClientId = State.getClientId(); // Este es el connId del WebSocket
+          if (
+            !signalingSocket ||
+            signalingSocket.readyState !== WebSocket.OPEN
+          ) {
+            Swal.fire(
+              "Error de Conexión",
+              "No se puede crear el chat, no hay conexión con el servidor de señalización.",
+              "error"
+            );
+            return;
+          }
 
-    console.log(
-      "CONFIRM ROOM NAME (modalHandlers.js): Username for chat creation:",
-      currentUsername
-    ); // Log de depuración
+          const newChatId =
+            Math.random().toString(36).substring(2, 10) +
+            Math.random().toString(36).substring(2, 10);
 
-    if (!currentUsername) {
-      // Nueva verificación
-      setStatusMessage(
-        "Error: No se pudo obtener el nombre de usuario autenticado para crear la sala.",
-        "error"
-      );
-      return;
-    }
-    if (!signalingSocket || signalingSocket.readyState !== WebSocket.OPEN) {
-      setStatusMessage(
-        "No conectado al servidor de señalización. No se puede crear chat.",
-        "error"
-      );
-      return;
-    }
+          setIsJoiningOrCreatingChat(true);
+          State.setCurrentChatId(newChatId);
+          State.setCurrentChatName(roomName);
 
-    if (roomName && roomName.length >= 3 && roomName.length <= 30) {
-      const newChatId =
-        Math.random().toString(36).substring(2, 10) +
-        Math.random().toString(36).substring(2, 10);
+          // setStatusMessage ya no es necesario aquí, podríamos usar un toast de Swal si quisiéramos
+          // setStatusMessage(`Creando chat (Nombre: "${roomName}")...`, "info");
 
-      setIsJoiningOrCreatingChat(true);
-      State.setCurrentChatId(newChatId);
-      State.setCurrentChatName(roomName);
+          signalingSocket.send(
+            JSON.stringify({
+              type: "create_chat",
+              chatId: newChatId,
+              chatName: roomName,
+            })
+          );
 
-      setStatusMessage(`Creando chat (Nombre: "${roomName}")...`, "info");
-      signalingSocket.send(
-        JSON.stringify({
-          type: "create_chat",
-          chatId: newChatId,
-          chatName: roomName,
-          // username: currentUsername, // El servidor ya usa ws.username del token
-          // clientId: currentClientId, // El servidor usa ws.connId de la conexión
-        })
-      );
+          showChatUI();
+          displayMessage(
+            "Sistema",
+            `Has creado el chat "${roomName}". Esperando confirmación...`,
+            false
+          );
+        }
+      });
+    });
+  }
 
-      UIElements.roomNameModal.style.display = "none";
-      showChatUI();
-      displayMessage(
-        "Sistema",
-        `Has creado el chat "${roomName}". Esperando confirmación...`,
-        false
-      );
-    } else {
-      setStatusMessage(
-        "Por favor, ingresa un nombre de sala válido (3-30 caracteres).",
-        "warning"
-      );
-    }
-  });
+  // --- 2. ELIMINACIÓN DE LISTENERS OBSOLETOS ---
+  // Los siguientes listeners ya no son necesarios porque los botones a los que
+  // estaban asociados (`confirm-room-name-button`, `cancel-room-name-button`)
+  // han sido eliminados del HTML. SweetAlert2 maneja sus propios botones.
 
-  UIElements.cancelRoomNameButton.addEventListener("click", () => {
-    UIElements.roomNameModal.style.display = "none";
-  });
+  // if (UIElements.confirmRoomNameButton) { ... } // BORRADO
+  // if (UIElements.cancelRoomNameButton) { ... } // BORRADO
 
-  UIElements.confirmLeaveButton.addEventListener("click", () => {
-    performLeaveChat(true);
-    UIElements.confirmLeaveModal.style.display = "none";
-  });
+  // --- 3. MANEJADORES DEL MODAL DE "CONFIRMAR SALIDA" ---
+  // Estos botones también los eliminamos del HTML.
+  // La lógica para mostrar el modal de confirmación de salida está en `app.js`.
+  // Modificaremos `app.js` después para que también use SweetAlert2, haciendo estos
+  // listeners también obsoletos. Por ahora, los comentamos o eliminamos para limpiar.
 
-  UIElements.cancelLeaveButton.addEventListener("click", () => {
-    UIElements.confirmLeaveModal.style.display = "none";
-  });
+  // if (UIElements.confirmLeaveButton) {
+  //   UIElements.confirmLeaveButton.addEventListener("click", () => {
+  //     performLeaveChat(true);
+  //     // UIElements.confirmLeaveModal.style.display = "none";
+  //   });
+  // }
+
+  // if (UIElements.cancelLeaveButton) {
+  //   UIElements.cancelLeaveButton.addEventListener("click", () => {
+  //     // UIElements.confirmLeaveModal.style.display = "none";
+  //   });
+  // }
 }

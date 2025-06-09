@@ -2,121 +2,141 @@
 import * as UIElements from "./uiElements.js";
 import * as State from "./state.js";
 
+/**
+ * Muestra un mensaje en el área de chat principal.
+ * Añade clases para estilizar las "burbujas" de chat.
+ * @param {string} sender - El nombre del remitente ("Sistema", "Yo", u otro usuario).
+ * @param {string} text - El contenido del mensaje.
+ * @param {boolean} isMe - True si el mensaje es del usuario actual.
+ */
 export function displayMessage(sender, text, isMe) {
-  const messageDiv = document.createElement("div");
-  messageDiv.classList.add("message");
+  if (!UIElements.messagesDiv) return;
+
+  const messageWrapper = document.createElement("div");
+  messageWrapper.classList.add("message");
+
+  // Añadir clases para estilizar según el remitente
   if (isMe) {
-    messageDiv.classList.add("me");
+    messageWrapper.classList.add("me");
   } else if (sender.toLowerCase() === "sistema") {
-    messageDiv.classList.add("system");
+    messageWrapper.classList.add("system");
   }
 
+  // Sanitizar el texto para evitar inyección de HTML
   const sanitizedText = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-  messageDiv.innerHTML = `<strong>${
+
+  // Usar innerHTML de forma segura con el texto ya sanitizado
+  messageWrapper.innerHTML = `<strong>${
     isMe ? "Yo" : sender
   }:</strong> ${sanitizedText}`;
-  UIElements.messagesDiv.appendChild(messageDiv);
+
+  UIElements.messagesDiv.appendChild(messageWrapper);
+  // Hacer scroll automático al último mensaje
   UIElements.messagesDiv.scrollTop = UIElements.messagesDiv.scrollHeight;
 }
 
+/**
+ * MODIFICADO: Muestra una notificación "toast" no bloqueante usando SweetAlert2.
+ * Reemplaza la antigua barra de estado.
+ * @param {string} message - El mensaje a mostrar.
+ * @param {string} type - El tipo de notificación ('info', 'success', 'warning', 'error').
+ */
 export function setStatusMessage(message, type = "info") {
-  if (UIElements.statusMessageDiv) {
-    UIElements.statusMessageDiv.textContent = message;
-    UIElements.statusMessageDiv.className = `status-message ${type}`;
-    UIElements.statusMessageDiv.style.display = "block";
+  // Swal está disponible globalmente desde el script en index.html
+  const Toast = Swal.mixin({
+    toast: true,
+    position: "top-end", // Aparece en la esquina superior derecha
+    showConfirmButton: false,
+    timer: 3500, // Duración del toast en milisegundos
+    timerProgressBar: true,
+    didOpen: (toast) => {
+      // Pausar el timer si el mouse está sobre el toast
+      toast.addEventListener("mouseenter", Swal.stopTimer);
+      toast.addEventListener("mouseleave", Swal.resumeTimer);
+    },
+  });
 
-    if (type === "success" || type === "info") {
-      setTimeout(() => {
-        // Solo limpiar si el mensaje no ha cambiado (para evitar borrar un error posterior)
-        if (
-          UIElements.statusMessageDiv.textContent === message &&
-          UIElements.statusMessageDiv.classList.contains(type)
-        ) {
-          clearStatusMessage();
-        }
-      }, 3500);
-    }
-  }
+  Toast.fire({
+    icon: type, // 'success', 'error', 'warning', 'info', 'question'
+    title: message,
+  });
 }
 
+/**
+ * OBSOLETO: La función clearStatusMessage ya no es necesaria,
+ * ya que los toasts de SweetAlert2 desaparecen automáticamente.
+ * La dejamos aquí comentada por si algún archivo la llama, pero debería eliminarse.
+ */
 export function clearStatusMessage() {
-  if (UIElements.statusMessageDiv) {
-    UIElements.statusMessageDiv.textContent = "";
-    UIElements.statusMessageDiv.className = "status-message";
-    UIElements.statusMessageDiv.style.display = "none";
-  }
+  // console.warn("Llamada a clearStatusMessage() que es obsoleta.");
 }
 
+/**
+ * MODIFICADO: Actualiza la lista de participantes en la sala de chat.
+ * Ahora añade clases de Bootstrap para un mejor estilo.
+ */
 export function updateMembersList() {
-  if (!UIElements.membersList) {
-    console.warn("Elemento membersList no encontrado en updateMembersList");
-    return;
-  }
+  if (!UIElements.membersList) return;
   UIElements.membersList.innerHTML = "";
 
-  const myUsername = State.getUsername(); // Nombre de usuario autenticado
-  const myConnId = State.getClientId(); // ID de la conexión WebSocket actual
-  const currentChatMembers = State.getCurrentChatMembers(); // Debería ser { connId1: username1, connId2: username2, ... }
-
-  // Añadir al usuario actual (Tú) a la lista
-  // El servidor ya incluye al propio usuario en la lista de miembros que envía,
-  // así que esta lógica podría ser redundante o causar duplicados si no se maneja con cuidado.
-  // La clave es que `currentChatMembers` debe ser la fuente de verdad.
-  // Si `currentChatMembers` ya contiene mi `myConnId` con mi `myUsername`, el bucle de abajo me añadirá.
-  // Vamos a simplificar: el bucle se encargará de todos, y marcaremos al propio usuario.
-
-  if (
-    Object.keys(currentChatMembers).length === 0 &&
-    State.getCurrentChatId()
-  ) {
-    // Si estamos en un chat pero la lista de miembros está vacía (ej. justo al crear)
-    // podríamos añadirnos temporalmente, pero es mejor esperar la actualización del servidor.
-    // Por ahora, si está vacío, no mostramos nada o un mensaje de "cargando miembros".
-    // UIElements.membersList.innerHTML = "<li>Cargando miembros...</li>";
-    // return; // Opcional, dependiendo de si se quiere mostrar algo mientras llega la lista
-  }
+  const myConnId = State.getClientId();
+  const currentChatMembers = State.getCurrentChatMembers(); // { connId: username }
 
   for (const memberConnId in currentChatMembers) {
     const memberUsername = currentChatMembers[memberConnId];
+
+    // Crear el elemento de la lista con clases de Bootstrap
     const listItem = document.createElement("li");
-    listItem.textContent = memberUsername;
+    listItem.className =
+      "list-group-item d-flex justify-content-between align-items-center";
+
+    // Contenedor para el nombre y la etiqueta "Tú"
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = memberUsername;
 
     if (memberConnId === myConnId) {
-      // Si este miembro soy yo
-      listItem.textContent += " (Tú)";
-      listItem.classList.add("me");
+      const youBadge = document.createElement("span");
+      youBadge.className = "badge bg-primary rounded-pill ms-2";
+      youBadge.textContent = "Tú";
+      nameSpan.appendChild(youBadge);
     }
 
-    const peer = State.getActivePeer(memberConnId); // Usar connId para buscar el peer
+    listItem.appendChild(nameSpan);
+
+    // Contenedor para el estado de la conexión P2P
+    const peer = State.getActivePeer(memberConnId);
     if (peer && peer.connected) {
-      listItem.classList.add("connected");
-      listItem.textContent += " (Conectado P2P)";
+      const statusBadge = document.createElement("span");
+      statusBadge.className =
+        "badge bg-success-subtle text-success-emphasis rounded-pill";
+      statusBadge.textContent = "Conectado";
+      listItem.appendChild(statusBadge);
     } else if (memberConnId !== myConnId) {
-      // No mostrar "Uniéndose..." para mí mismo si no estoy conectado P2P conmigo mismo
-      listItem.classList.add("connecting");
-      listItem.textContent += " (Estableciendo P2P...)";
+      const statusBadge = document.createElement("span");
+      statusBadge.className =
+        "badge bg-secondary-subtle text-secondary-emphasis rounded-pill";
+      statusBadge.textContent = "Estableciendo...";
+      listItem.appendChild(statusBadge);
     }
+
     UIElements.membersList.appendChild(listItem);
   }
 }
 
+/**
+ * MODIFICADO: Muestra la interfaz de chat, ocultando el lobby.
+ * Se han limpiado referencias a elementos obsoletos.
+ */
 export function showChatUI() {
-  // UIElements.userSetupDiv.style.display = "none"; // userSetupDiv ya no existe, esta línea causaría error si no se comenta/elimina.
-  // app.js ahora controla la visibilidad de authAreaDiv y mainAppAreaDiv.
-  if (UIElements.authAreaDiv) UIElements.authAreaDiv.style.display = "none"; // Ocultar autenticación
   if (UIElements.mainAppAreaDiv)
-    UIElements.mainAppAreaDiv.style.display = "block"; // Mostrar área principal
-
-  UIElements.createChatButton.style.display = "none"; // Ocultar en la vista de chat
-  UIElements.chatListDiv.style.display = "none"; // Ocultar en la vista de chat
+    UIElements.mainAppAreaDiv.style.display = "block";
+  if (document.getElementById("lobby-area"))
+    document.getElementById("lobby-area").style.display = "none";
 
   UIElements.chatAreaDiv.style.display = "block";
-  UIElements.messageInputAreaDiv.style.display = "flex";
-  if (UIElements.leaveChatButton)
-    UIElements.leaveChatButton.style.display = "inline-block";
 
   const chatName = State.getCurrentChatName();
   const chatId = State.getCurrentChatId();
@@ -129,19 +149,17 @@ export function showChatUI() {
   updateMembersList();
 }
 
+/**
+ * MODIFICADO: Muestra la interfaz del lobby, ocultando el chat.
+ * Se han limpiado referencias a elementos obsoletos.
+ */
 export function showLobbyUI(doRequestChatList = true) {
-  // UIElements.userSetupDiv.style.display = "none"; // userSetupDiv ya no existe
-  if (UIElements.authAreaDiv) UIElements.authAreaDiv.style.display = "none"; // Ocultar autenticación
   if (UIElements.mainAppAreaDiv)
-    UIElements.mainAppAreaDiv.style.display = "block"; // Mostrar área principal
-
-  UIElements.createChatButton.style.display = "block"; // Mostrar en el lobby
-  UIElements.chatListDiv.style.display = "block"; // Mostrar en el lobby
+    UIElements.mainAppAreaDiv.style.display = "block";
+  if (document.getElementById("lobby-area"))
+    document.getElementById("lobby-area").style.display = "block";
 
   UIElements.chatAreaDiv.style.display = "none";
-  UIElements.messageInputAreaDiv.style.display = "none";
-  if (UIElements.leaveChatButton)
-    UIElements.leaveChatButton.style.display = "none";
 
   UIElements.messagesDiv.innerHTML = "";
   UIElements.messageInput.value = "";
@@ -159,39 +177,16 @@ export function showLobbyUI(doRequestChatList = true) {
     signalingSocket.send(JSON.stringify({ type: "request_chat_list" }));
   }
 
-  // Solo establecer mensaje de bienvenida si no hay un error o warning importante
-  if (
-    UIElements.statusMessageDiv &&
-    !UIElements.statusMessageDiv.classList.contains("error") &&
-    !UIElements.statusMessageDiv.classList.contains("warning")
-  ) {
-    setStatusMessage("Bienvenido al lobby. Crea o únete a un chat.", "info");
-  }
+  // Ya no usamos setStatusMessage para esto, app.js puede manejarlo si es necesario.
+  // setStatusMessage("Bienvenido al lobby. Crea o únete a un chat.", "info");
 }
 
 /**
- * Esta función podría ya no ser necesaria o su lógica ha sido absorbida
- * por showAuthUI y showMainAppUI en app.js
+ * OBSOLETO: Esta función ya no debería ser necesaria. La lógica de inicialización
+ * en app.js (showAuthUI vs showMainAppUI) se encarga de la vista inicial.
  */
 export function hideInitialUI() {
   console.warn(
-    "UIHELPERS: hideInitialUI() llamada, pero podría ser obsoleta. Verificar su uso."
+    "Llamada a hideInitialUI() que es obsoleta. Considerar eliminar la llamada desde donde se origine."
   );
-  // UIElements.userSetupDiv.style.display = "flex"; // userSetupDiv ya no existe
-  if (UIElements.authAreaDiv) UIElements.authAreaDiv.style.display = "flex"; // Mostrar auth por defecto si esto se llamara
-  if (UIElements.mainAppAreaDiv)
-    UIElements.mainAppAreaDiv.style.display = "none";
-
-  if (UIElements.chatAreaDiv) UIElements.chatAreaDiv.style.display = "none";
-  if (UIElements.messageInputAreaDiv)
-    UIElements.messageInputAreaDiv.style.display = "none";
-  if (UIElements.chatListDiv) UIElements.chatListDiv.style.display = "none";
-  if (UIElements.createChatButton)
-    UIElements.createChatButton.style.display = "none";
-  // statusMessageDiv se maneja por setStatusMessage/clearStatusMessage
-  if (UIElements.leaveChatButton)
-    UIElements.leaveChatButton.style.display = "none";
-  if (UIElements.roomNameModal) UIElements.roomNameModal.style.display = "none";
-  if (UIElements.confirmLeaveModal)
-    UIElements.confirmLeaveModal.style.display = "none";
 }

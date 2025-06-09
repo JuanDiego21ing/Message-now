@@ -4,14 +4,19 @@ import * as State from "./state.js";
 import { setStatusMessage, showChatUI, displayMessage } from "./uiHelpers.js";
 import { setIsJoiningOrCreatingChat } from "./signaling.js";
 
+// La librería SweetAlert2 (Swal) ya está disponible globalmente
+
 export function updateAvailableChats(chats) {
-  UIElements.availableChatsList.innerHTML = ""; // Clear previous list
+  if (!UIElements.availableChatsList) return;
+  UIElements.availableChatsList.innerHTML = ""; // Limpiar lista anterior
+
   if (!Array.isArray(chats) || chats.length === 0) {
+    // MODIFICADO: Usar clase de Bootstrap para el mensaje de "no hay chats"
     UIElements.availableChatsList.innerHTML =
-      "<li>No hay chats disponibles aún.</li>";
+      '<li class="list-group-item">No hay chats disponibles aún.</li>';
     return;
   }
-  // Sort chats by name, then by ID if name is missing
+
   chats.sort((a, b) => {
     const nameA = a.chatName || a.chatId || "";
     const nameB = b.chatName || b.chatId || "";
@@ -21,6 +26,10 @@ export function updateAvailableChats(chats) {
   chats.forEach((chat) => addChatToList(chat));
 }
 
+/**
+ * MODIFICADO: Añade o actualiza un chat en la lista con clases de Bootstrap para un mejor estilo.
+ * @param {object} chat - El objeto de chat del servidor.
+ */
 export function addChatToList(chat) {
   if (!chat || !chat.chatId) {
     console.warn("Intento de añadir chat inválido a la lista:", chat);
@@ -28,51 +37,64 @@ export function addChatToList(chat) {
   }
 
   const existingListItem = document.getElementById(`chat-${chat.chatId}`);
+
+  // Si el elemento ya existe, solo actualizamos los datos dinámicos (como el número de miembros)
   if (existingListItem) {
-    const nameStrong = existingListItem.querySelector("strong");
-    if (nameStrong) {
-      nameStrong.textContent =
-        chat.chatName || `ID: ${chat.chatId.substring(0, 8)}...`;
+    const memberCountBadge = existingListItem.querySelector(
+      ".member-count-badge"
+    );
+    if (memberCountBadge) {
+      memberCountBadge.textContent = `${chat.memberCount || 0} Participante(s)`;
     }
-    const creatorSpan = existingListItem.querySelector(".creator");
-    if (creatorSpan) {
-      creatorSpan.textContent = chat.creator || "Desconocido";
-    }
-    const memberCountSpan = existingListItem.querySelector(".member-count");
-    if (memberCountSpan) {
-      memberCountSpan.textContent = chat.memberCount;
-    }
-    const joinButton = existingListItem.querySelector("button");
-    if (joinButton) {
-      joinButton.dataset.chatname = chat.chatName || "";
-    }
+    // Podríamos actualizar también nombre y creador si pudieran cambiar, pero es menos común.
+    // const nameElement = existingListItem.querySelector(".chat-name");
+    // const creatorElement = existingListItem.querySelector(".chat-creator");
     return;
   }
 
+  // Si el elemento no existe, lo creamos desde cero con la estructura de Bootstrap
   const listItem = document.createElement("li");
+  // Clases de Bootstrap para un elemento de lista con contenido flexible
+  listItem.className =
+    "list-group-item d-flex justify-content-between align-items-center";
   listItem.id = `chat-${chat.chatId}`;
-  listItem.innerHTML = `
-        Sala: <strong>${
-          chat.chatName || `ID: ${chat.chatId.substring(0, 8)}...`
-        }</strong>
-        <br>Creador: <span class="creator">${
-          chat.creator || "Desconocido"
-        }</span> 
-        (<span class="member-count">${
-          chat.memberCount || 0
-        }</span> participante/s)
-        <button data-chatid="${chat.chatId}" data-chatname="${
-    chat.chatName || ""
-  }">Unirse</button>
-    `;
 
-  const joinButton = listItem.querySelector("button");
+  // Contenedor para el nombre del chat y el creador
+  const infoDiv = document.createElement("div");
+  const chatName = chat.chatName || `Sala sin nombre`;
+  const creatorName = chat.creator || "Desconocido";
+  infoDiv.innerHTML = `
+    <h5 class="mb-1 chat-name">${chatName}</h5>
+    <small class="text-muted chat-creator">Creado por: ${creatorName}</small>
+  `;
+
+  // Contenedor para el contador de miembros y el botón de unirse
+  const actionsDiv = document.createElement("div");
+  actionsDiv.className = "d-flex align-items-center gap-3";
+
+  // Badge para el número de participantes
+  const memberCountBadge = document.createElement("span");
+  memberCountBadge.className =
+    "badge bg-secondary rounded-pill member-count-badge";
+  memberCountBadge.textContent = `${chat.memberCount || 0} Participante(s)`;
+
+  // Botón para unirse
+  const joinButton = document.createElement("button");
+  joinButton.className = "btn btn-primary btn-sm";
+  joinButton.textContent = "Unirse";
+  joinButton.dataset.chatid = chat.chatId;
+  joinButton.dataset.chatname = chat.chatName || "";
+
   joinButton.addEventListener("click", () => {
-    const targetChatId = joinButton.dataset.chatid;
-    const targetChatName =
-      joinButton.dataset.chatname || `ID: ${targetChatId.substring(0, 8)}...`;
-    requestJoinChat(targetChatId, targetChatName);
+    requestJoinChat(joinButton.dataset.chatid, joinButton.dataset.chatname);
   });
+
+  // Ensamblar todo
+  actionsDiv.appendChild(memberCountBadge);
+  actionsDiv.appendChild(joinButton);
+  listItem.appendChild(infoDiv);
+  listItem.appendChild(actionsDiv);
+
   UIElements.availableChatsList.appendChild(listItem);
 }
 
@@ -82,45 +104,45 @@ export function removeChatFromList(chatId) {
     listItem.remove();
     if (UIElements.availableChatsList.children.length === 0) {
       UIElements.availableChatsList.innerHTML =
-        "<li>No hay chats disponibles aún.</li>";
+        '<li class="list-group-item">No hay chats disponibles aún.</li>';
     }
   }
 }
 
+/**
+ * MODIFICADO: Usa SweetAlert2 para mostrar errores al usuario en lugar de setStatusMessage.
+ * @param {string} chatId
+ * @param {string} chatName
+ */
 export function requestJoinChat(chatId, chatName) {
-  // ---- LOG AÑADIDO PARA DEPURACIÓN ----
   console.log(
     "REQUEST JOIN CHAT (chatList.js): State.username is:",
     State.getUsername()
   );
-  console.log(
-    "REQUEST JOIN CHAT (chatList.js): State.getAuthToken is present:",
-    State.getAuthToken() ? "Yes" : "No"
-  );
-  // ---- FIN DE LOGS ----
 
-  const username = State.getUsername(); // Obtiene el username del usuario autenticado
+  const username = State.getUsername();
   const currentChatId = State.getCurrentChatId();
   const signalingSocket = State.getSignalingSocket();
-  const clientId = State.getClientId(); // Este es el connId del WebSocket
 
   if (!username) {
-    // Esta verificación ahora se basa en el usuario autenticado
-    setStatusMessage(
-      "Debes estar autenticado para unirte a un chat. Por favor, inicia sesión.", // Mensaje actualizado
+    Swal.fire(
+      "No Autenticado",
+      "Debes iniciar sesión para unirte a un chat.",
       "error"
     );
     return;
   }
   if (currentChatId) {
-    setStatusMessage(
+    Swal.fire(
+      "Acción no permitida",
       "Ya estás en un chat. Sal de él para unirte a otro.",
       "warning"
     );
     return;
   }
   if (!signalingSocket || signalingSocket.readyState !== WebSocket.OPEN) {
-    setStatusMessage(
+    Swal.fire(
+      "Error de Conexión",
       "No conectado al servidor de señalización. Intenta de nuevo.",
       "error"
     );
@@ -131,6 +153,7 @@ export function requestJoinChat(chatId, chatName) {
   State.setCurrentChatId(chatId);
   State.setCurrentChatName(chatName);
 
+  // setStatusMessage ahora es un toast no bloqueante, lo cual es apropiado aquí.
   setStatusMessage(
     `Solicitando unirse al chat "${chatName || chatId.substring(0, 8)}"...`,
     "info"
@@ -140,10 +163,7 @@ export function requestJoinChat(chatId, chatName) {
     JSON.stringify({
       type: "register_user",
       chatId: chatId,
-      // El servidor ya toma el username y el connId (equivalente a este clientId) del objeto 'ws' autenticado
-      // por el token, así que enviar estos desde el cliente es redundante pero no dañino si el servidor los ignora.
-      username: username,
-      clientId: clientId,
+      // username y clientId son redundantes si el servidor usa la identidad de la conexión WebSocket
     })
   );
 

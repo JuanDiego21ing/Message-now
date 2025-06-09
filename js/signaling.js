@@ -1,12 +1,10 @@
 // js/signaling.js
 import * as State from "./state.js";
-// ... (resto de tus importaciones)
 import {
-  setStatusMessage,
+  setStatusMessage, // Esta función ahora muestra "toasts" de SweetAlert2
   showLobbyUI,
   updateMembersList,
   displayMessage,
-  clearStatusMessage,
 } from "./uiHelpers.js";
 import {
   updateAvailableChats,
@@ -15,6 +13,7 @@ import {
 } from "./chatList.js";
 import { createPeer, handleChatMembersUpdate } from "./webrtc.js";
 
+// La librería SweetAlert2 (Swal) ya está disponible globalmente
 let reconnectTimer = null;
 let currentOperationIsJoinOrCreate = false;
 
@@ -32,18 +31,20 @@ export function connectToSignalingServer() {
     return;
   }
 
-  const token = State.getAuthToken(); // ¡OBTENER EL TOKEN!
+  const token = State.getAuthToken();
   if (!token) {
     console.error("Intento de conexión WebSocket sin token de autenticación.");
-    setStatusMessage("Error: No autenticado para conectar al chat.", "error");
-    // Aquí podrías redirigir al login o mostrar el formulario de login
-    // Por ejemplo, llamando a una función en uiHelpers.js o app.js
-    // showLoginUI(); // Suponiendo que tienes esta función
+    // Usamos Swal.fire para un error bloqueante en lugar de un toast
+    Swal.fire(
+      "Error de Autenticación",
+      "No se puede conectar al chat sin un token de sesión. Por favor, inicia sesión.",
+      "error"
+    );
     return;
   }
 
-  setStatusMessage("Conectando al servidor de chat...", "info");
-  // ¡AÑADIR TOKEN A LA URL!
+  setStatusMessage("Conectando al servidor de chat...", "info"); // Esto mostrará un toast
+
   const socket = new WebSocket(`${State.SIGNALING_SERVER_URL}?token=${token}`);
   State.setSignalingSocket(socket);
 
@@ -52,7 +53,6 @@ export function connectToSignalingServer() {
       "Conexión WebSocket establecida y autenticada (esperando your_id)."
     );
     clearTimeout(reconnectTimer);
-    // El servidor enviará 'your_id' y 'chat_list'
   };
 
   socket.onmessage = async (event) => {
@@ -63,24 +63,21 @@ export function connectToSignalingServer() {
       switch (data.type) {
         case "your_id":
           State.setClientId(data.clientId); // Este es el connId del WebSocket
-          // El username ya debería estar en State.username desde el login
-          // data.username que envía el server ahora es el username autenticado
+
           if (data.username && data.username !== State.getUsername()) {
             console.warn(
-              "El username del token no coincide con el username del cliente. Usando el del token del servidor."
+              `Username del token (${
+                data.username
+              }) no coincide con el del estado local (${State.getUsername()}). Esto no debería suceder.`
             );
-            // Esto no debería pasar si el token se genera y usa correctamente
           }
-          setStatusMessage(
-            `Conectado al chat como ${State.getUsername()}`,
-            "success"
-          );
+          // El toast de "Conectado" es una buena confirmación para el usuario.
+          setStatusMessage(`Conectado como ${State.getUsername()}`, "success");
           break;
 
-        // ... (resto de tu lógica de onmessage SIN CAMBIOS IMPORTANTES POR AHORA,
-        // ya que el servidor usa el ws.username autenticado)
         case "chat_list":
           updateAvailableChats(data.chats);
+          // showLobbyUI(false) asegura que la UI se muestre correctamente sin causar un bucle de recarga.
           if (State.getClientId() && !State.getCurrentChatId()) {
             showLobbyUI(false);
           }
@@ -89,36 +86,29 @@ export function connectToSignalingServer() {
         case "chat_removed":
           removeChatFromList(data.chatId);
           if (State.getCurrentChatId() === data.chatId) {
-            setStatusMessage(
-              "El chat al que estabas conectado ha sido eliminado.",
+            // Un Swal.fire es más apropiado aquí porque es un evento importante que saca al usuario del chat.
+            Swal.fire(
+              "Chat Eliminado",
+              "El chat al que estabas conectado ha sido eliminado por el servidor.",
               "warning"
             );
-            displayMessage(
-              "Sistema",
-              "Este chat ha sido eliminado por el servidor.",
-              false
-            );
             State.resetCurrentChatState();
-            setTimeout(() => showLobbyUI(true), 200);
+            setTimeout(() => showLobbyUI(true), 1500); // Un poco más de tiempo para que el usuario lea la alerta
           }
           break;
 
         case "chat_members_update":
           if (data.chatId === State.getCurrentChatId()) {
-            const myClientId_connId = State.getClientId(); // Este es el connId
+            const myConnId = State.getClientId();
             const currentMembersBeforeUpdate = {
               ...State.getCurrentChatMembers(),
             };
-            // El servidor ahora envía members como { connId: username }
-            const iWasMember = !!currentMembersBeforeUpdate[myClientId_connId];
+            const iWasMember = !!currentMembersBeforeUpdate[myConnId];
 
             State.setCurrentChatMembers(data.members);
             if (data.chatName) State.setCurrentChatName(data.chatName);
 
-            if (
-              currentOperationIsJoinOrCreate &&
-              data.members[myClientId_connId]
-            ) {
+            if (currentOperationIsJoinOrCreate && data.members[myConnId]) {
               if (
                 !iWasMember ||
                 Object.keys(currentMembersBeforeUpdate).length === 0
@@ -127,24 +117,19 @@ export function connectToSignalingServer() {
                   `Te has unido a "${
                     State.getCurrentChatName() ||
                     State.getCurrentChatId().substring(0, 8)
-                  }". Configurando P2P...`,
+                  }".`,
                   "success"
                 );
               }
               setIsJoiningOrCreatingChat(false);
             }
 
-            const newMemberIds_connIds = Object.keys(data.members);
-            const oldMemberIds_connIds = Object.keys(
-              currentMembersBeforeUpdate
-            );
+            const newMemberIds = Object.keys(data.members);
+            const oldMemberIds = Object.keys(currentMembersBeforeUpdate);
 
-            newMemberIds_connIds.forEach((id) => {
-              // Comparar usando connId (clientId del WebSocket)
-              if (
-                id !== myClientId_connId &&
-                !oldMemberIds_connIds.includes(id)
-              ) {
+            newMemberIds.forEach((id) => {
+              if (id !== myConnId && !oldMemberIds.includes(id)) {
+                // displayMessage es perfecto para notificaciones dentro del chat.
                 displayMessage(
                   "Sistema",
                   `${data.members[id]} se ha unido al chat.`,
@@ -153,69 +138,64 @@ export function connectToSignalingServer() {
               }
             });
 
+            // La desconexión de un miembro se maneja mejor en el evento 'close' de webrtc.js
+            // para evitar mensajes duplicados (uno del servidor, otro de P2P).
+
             updateMembersList();
             handleChatMembersUpdate(data.members);
           }
           break;
 
         case "signal":
-          const senderClientId_connId = data.senderId; // Este es un connId
+          const senderConnId = data.senderId;
           const signalData = data.signal;
-          let peerToSignal = State.getActivePeer(senderClientId_connId);
+          let peerToSignal = State.getActivePeer(senderConnId);
 
           if (peerToSignal) {
             peerToSignal.signal(signalData);
           } else if (signalData.type === "offer") {
-            // State.getCurrentChatMembers() es { connId: username }
             if (
-              State.getCurrentChatMembers()[senderClientId_connId] &&
+              State.getCurrentChatMembers()[senderConnId] &&
               data.chatId === State.getCurrentChatId()
             ) {
               const remoteUsername =
-                State.getCurrentChatMembers()[senderClientId_connId];
+                State.getCurrentChatMembers()[senderConnId];
               console.log(
-                `Recibida oferta de ${remoteUsername} (ConnID: ${senderClientId_connId}), creando peer (no iniciador)`
+                `Recibida oferta de ${remoteUsername} (ConnID: ${senderConnId}), creando peer (no iniciador)`
               );
-              peerToSignal = createPeer(
-                senderClientId_connId,
-                remoteUsername,
-                false
-              );
+              peerToSignal = createPeer(senderConnId, remoteUsername, false);
               peerToSignal.signal(signalData);
             } else {
               console.warn(
-                `Oferta P2P recibida de un cliente ${senderClientId_connId} no esperado o chat incorrecto. Ignorada.`,
+                `Oferta P2P recibida de un cliente ${senderConnId} no esperado o chat incorrecto. Ignorada.`,
                 data
               );
             }
           } else {
             console.warn(
-              `Señal P2P (tipo ${signalData.type}) de ${senderClientId_connId} sin peer o no es oferta. Ignorada.`,
+              `Señal P2P (tipo ${signalData.type}) de ${senderConnId} sin peer o no es oferta. Ignorada.`,
               data
             );
           }
           break;
 
-        case "error": // Errores del servidor WebSocket (ej. token inválido al conectar)
-          setStatusMessage(
-            `Error del servidor de chat: ${data.message}`,
-            "error"
-          );
+        case "error": // Errores enviados por el servidor WebSocket
+          // Un Swal.fire es mejor para errores que pueden requerir la atención del usuario.
+          Swal.fire("Error del Servidor", data.message, "error");
           console.error("Error del servidor de chat:", data.message, data);
           setIsJoiningOrCreatingChat(false);
 
-          // Si el error es de autenticación, podríamos necesitar volver a mostrar el login
-          if (
-            data.message.includes("Autenticación fallida") ||
-            data.message.includes("Autenticación requerida")
-          ) {
-            State.clearAuthenticatedUser(); // Limpiar token viejo
-            // Aquí llamarías a una función que muestre el UI de login de nuevo
-            // Por ejemplo: showAuthUI(); (a definir en uiHelpers o app.js)
-            document.getElementById("main-app-area").style.display = "none";
-            document.getElementById("auth-area").style.display = "block";
+          if (data.message.includes("Autenticación")) {
+            State.clearAuthenticatedUser();
+            // La lógica para volver al login ya está en app.js y onclose
+            // Pero podemos forzarlo si es necesario.
+            setTimeout(() => {
+              if (document.getElementById("auth-area")) {
+                document.getElementById("main-app-area").style.display = "none";
+                document.getElementById("auth-area").style.display = "block";
+              }
+            }, 2000);
           } else {
-            // Otros errores que podrían requerir ir al lobby
             const kickToLobbyMessages = [
               "Chat con ID",
               "no encontrado",
@@ -225,7 +205,7 @@ export function connectToSignalingServer() {
             if (kickToLobbyMessages.some((msg) => data.message.includes(msg))) {
               if (State.getCurrentChatId()) {
                 State.resetCurrentChatState();
-                setTimeout(() => showLobbyUI(true), 1000);
+                setTimeout(() => showLobbyUI(true), 1500);
               }
             }
           }
@@ -237,8 +217,9 @@ export function connectToSignalingServer() {
           );
       }
     } catch (e) {
-      setStatusMessage("Error procesando mensaje del servidor.", "error");
+      // Este es un error al parsear el mensaje, no un error de la lógica de la app
       console.error("Error al parsear mensaje del servidor:", e, event.data);
+      setStatusMessage("Error procesando mensaje del servidor.", "error");
     }
   };
 
@@ -249,25 +230,29 @@ export function connectToSignalingServer() {
       event.reason
     );
     setIsJoiningOrCreatingChat(false);
-    State.setSignalingSocket(null); // Marcar el socket como cerrado/nulo
+    State.setSignalingSocket(null);
 
-    if (event.code === 1000) {
+    // Lógica para no reintentar si el cierre fue intencional (logout) o por token inválido
+    const intentionalClose =
+      event.code === 1000 ||
+      event.code === 4001 ||
+      event.reason.includes("Token inválido");
+
+    if (intentionalClose) {
       setStatusMessage("Desconectado del servidor.", "info");
-      return;
-    } else if (event.code === 4001 || event.reason.includes("Token inválido")) {
-      // Ejemplo de código personalizado para error de auth
-      setStatusMessage(
-        "Sesión inválida. Por favor, inicia sesión de nuevo.",
-        "error"
-      );
-      State.clearAuthenticatedUser();
-      document.getElementById("main-app-area").style.display = "none";
-      document.getElementById("auth-area").style.display = "block";
+      // La lógica de `handleLogout` en app.js ya maneja la UI
+      // En caso de token inválido, también debemos mostrar la UI de login.
+      if (!State.getAuthToken()) {
+        // Si el token fue limpiado
+        document.getElementById("main-app-area").style.display = "none";
+        document.getElementById("auth-area").style.display = "block";
+      }
       return;
     }
+
+    // Si la desconexión no fue intencional, intentar reconectar si aún hay un token válido
     setStatusMessage("Desconectado. Reintentando conectar...", "error");
     clearTimeout(reconnectTimer);
-    // Solo reintentar si hay un token válido, de lo contrario el usuario debe loguearse
     if (State.getAuthToken()) {
       reconnectTimer = setTimeout(
         connectToSignalingServer,
@@ -289,6 +274,5 @@ export function connectToSignalingServer() {
       "Fallo en la conexión al servidor. Revisa la consola.",
       "error"
     );
-    // onclose se llamará después.
   };
 }

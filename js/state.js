@@ -2,15 +2,15 @@
 export let username = null;
 export let userId = null;
 export let authToken = null;
-export let clientId = null; // ID de conexión WebSocket
-export let signalingSocket = null; // Asegúrate que esta declaración esté presente
+export let clientId = null; 
+export let signalingSocket = null; 
 export const activePeers = new Map();
 export let currentChatId = null;
 export let currentChatName = null;
 export let currentChatMembers = {};
 
 // ---- MODIFICACIÓN AQUÍ ----
-export const SIGNALING_SERVER_URL = "ws://192.168.1.109:8081"; // IP de tu laptop anfitrión
+export const SIGNALING_SERVER_URL = "ws://192.168.1.109:8081";
 export const RECONNECT_INTERVAL = 5000;
 
 export function setAuthenticatedUser(authUsername, authUserId, token) {
