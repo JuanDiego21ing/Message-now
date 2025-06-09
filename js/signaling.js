@@ -1,10 +1,11 @@
 // js/signaling.js
 import * as State from "./state.js";
 import {
-  setStatusMessage, // Esta función ahora muestra "toasts" de SweetAlert2
+  setStatusMessage,
   showLobbyUI,
   updateMembersList,
   displayMessage,
+  showChatUI, // Asegúrate de importar showChatUI
 } from "./uiHelpers.js";
 import {
   updateAvailableChats,
@@ -34,7 +35,6 @@ export function connectToSignalingServer() {
   const token = State.getAuthToken();
   if (!token) {
     console.error("Intento de conexión WebSocket sin token de autenticación.");
-    // Usamos Swal.fire para un error bloqueante en lugar de un toast
     Swal.fire(
       "Error de Autenticación",
       "No se puede conectar al chat sin un token de sesión. Por favor, inicia sesión.",
@@ -43,7 +43,7 @@ export function connectToSignalingServer() {
     return;
   }
 
-  setStatusMessage("Conectando al servidor de chat...", "info"); // Esto mostrará un toast
+  setStatusMessage("Conectando al servidor de chat...", "info");
 
   const socket = new WebSocket(`${State.SIGNALING_SERVER_URL}?token=${token}`);
   State.setSignalingSocket(socket);
@@ -62,23 +62,18 @@ export function connectToSignalingServer() {
 
       switch (data.type) {
         case "your_id":
-          State.setClientId(data.clientId); // Este es el connId del WebSocket
-
-          if (data.username && data.username !== State.getUsername()) {
-            console.warn(
-              `Username del token (${
-                data.username
-              }) no coincide con el del estado local (${State.getUsername()}). Esto no debería suceder.`
-            );
-          }
-          // El toast de "Conectado" es una buena confirmación para el usuario.
+          State.setClientId(data.clientId);
           setStatusMessage(`Conectado como ${State.getUsername()}`, "success");
           break;
 
         case "chat_list":
           updateAvailableChats(data.chats);
-          // showLobbyUI(false) asegura que la UI se muestre correctamente sin causar un bucle de recarga.
-          if (State.getClientId() && !State.getCurrentChatId()) {
+          // Modificación para evitar el bug visual: se añade la comprobación de la bandera.
+          if (
+            State.getClientId() &&
+            !State.getCurrentChatId() &&
+            !currentOperationIsJoinOrCreate
+          ) {
             showLobbyUI(false);
           }
           break;
@@ -86,14 +81,13 @@ export function connectToSignalingServer() {
         case "chat_removed":
           removeChatFromList(data.chatId);
           if (State.getCurrentChatId() === data.chatId) {
-            // Un Swal.fire es más apropiado aquí porque es un evento importante que saca al usuario del chat.
             Swal.fire(
               "Chat Eliminado",
               "El chat al que estabas conectado ha sido eliminado por el servidor.",
               "warning"
             );
             State.resetCurrentChatState();
-            setTimeout(() => showLobbyUI(true), 1500); // Un poco más de tiempo para que el usuario lea la alerta
+            setTimeout(() => showLobbyUI(true), 1500);
           }
           break;
 
@@ -113,6 +107,10 @@ export function connectToSignalingServer() {
                 !iWasMember ||
                 Object.keys(currentMembersBeforeUpdate).length === 0
               ) {
+                // ---- CAMBIO IMPORTANTE AQUÍ ----
+                // Ahora que el servidor confirmó, mostramos la UI del chat.
+                showChatUI();
+
                 setStatusMessage(
                   `Te has unido a "${
                     State.getCurrentChatName() ||
@@ -129,7 +127,6 @@ export function connectToSignalingServer() {
 
             newMemberIds.forEach((id) => {
               if (id !== myConnId && !oldMemberIds.includes(id)) {
-                // displayMessage es perfecto para notificaciones dentro del chat.
                 displayMessage(
                   "Sistema",
                   `${data.members[id]} se ha unido al chat.`,
@@ -137,9 +134,6 @@ export function connectToSignalingServer() {
                 );
               }
             });
-
-            // La desconexión de un miembro se maneja mejor en el evento 'close' de webrtc.js
-            // para evitar mensajes duplicados (uno del servidor, otro de P2P).
 
             updateMembersList();
             handleChatMembersUpdate(data.members);
@@ -160,9 +154,6 @@ export function connectToSignalingServer() {
             ) {
               const remoteUsername =
                 State.getCurrentChatMembers()[senderConnId];
-              console.log(
-                `Recibida oferta de ${remoteUsername} (ConnID: ${senderConnId}), creando peer (no iniciador)`
-              );
               peerToSignal = createPeer(senderConnId, remoteUsername, false);
               peerToSignal.signal(signalData);
             } else {
@@ -179,21 +170,16 @@ export function connectToSignalingServer() {
           }
           break;
 
-        case "error": // Errores enviados por el servidor WebSocket
-          // Un Swal.fire es mejor para errores que pueden requerir la atención del usuario.
+        case "error":
           Swal.fire("Error del Servidor", data.message, "error");
           console.error("Error del servidor de chat:", data.message, data);
           setIsJoiningOrCreatingChat(false);
 
           if (data.message.includes("Autenticación")) {
             State.clearAuthenticatedUser();
-            // La lógica para volver al login ya está en app.js y onclose
-            // Pero podemos forzarlo si es necesario.
             setTimeout(() => {
-              if (document.getElementById("auth-area")) {
-                document.getElementById("main-app-area").style.display = "none";
-                document.getElementById("auth-area").style.display = "block";
-              }
+              document.getElementById("main-app-area").style.display = "none";
+              document.getElementById("auth-area").style.display = "block";
             }, 2000);
           } else {
             const kickToLobbyMessages = [
@@ -217,7 +203,6 @@ export function connectToSignalingServer() {
           );
       }
     } catch (e) {
-      // Este es un error al parsear el mensaje, no un error de la lógica de la app
       console.error("Error al parsear mensaje del servidor:", e, event.data);
       setStatusMessage("Error procesando mensaje del servidor.", "error");
     }
@@ -232,7 +217,6 @@ export function connectToSignalingServer() {
     setIsJoiningOrCreatingChat(false);
     State.setSignalingSocket(null);
 
-    // Lógica para no reintentar si el cierre fue intencional (logout) o por token inválido
     const intentionalClose =
       event.code === 1000 ||
       event.code === 4001 ||
@@ -240,17 +224,13 @@ export function connectToSignalingServer() {
 
     if (intentionalClose) {
       setStatusMessage("Desconectado del servidor.", "info");
-      // La lógica de `handleLogout` en app.js ya maneja la UI
-      // En caso de token inválido, también debemos mostrar la UI de login.
       if (!State.getAuthToken()) {
-        // Si el token fue limpiado
         document.getElementById("main-app-area").style.display = "none";
         document.getElementById("auth-area").style.display = "block";
       }
       return;
     }
 
-    // Si la desconexión no fue intencional, intentar reconectar si aún hay un token válido
     setStatusMessage("Desconectado. Reintentando conectar...", "error");
     clearTimeout(reconnectTimer);
     if (State.getAuthToken()) {
